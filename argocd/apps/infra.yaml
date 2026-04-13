@@ -1,0 +1,32 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: infra
+  namespace: argocd
+spec:
+  project: platform
+  sources:
+    - repoURL: https://github.com/yourusername/videostreamingplatform-infra.git
+      targetRevision: main
+      path: kafka
+    - repoURL: https://github.com/yourusername/videostreamingplatform-infra.git
+      targetRevision: main
+      path: schema-registry
+    - repoURL: https://github.com/yourusername/videostreamingplatform-infra.git
+      targetRevision: main
+      path: pgvector
+    - repoURL: https://github.com/yourusername/videostreamingplatform-infra.git
+      targetRevision: main
+      path: networking
+    - repoURL: https://github.com/yourusername/videostreamingplatform-infra.git
+      targetRevision: main
+      path: rbac
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: infra
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

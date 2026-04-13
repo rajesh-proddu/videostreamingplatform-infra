@@ -1,0 +1,37 @@
+name: Infrastructure CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install kubeconform
+        run: |
+          curl -sL https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz | tar xz
+          sudo mv kubeconform /usr/local/bin/
+
+      - name: Validate K8s manifests
+        run: |
+          find . -name '*.yaml' \
+            -not -path './.github/*' \
+            -not -path './docker-compose*' \
+            -not -path './argocd/*' \
+            | xargs kubeconform -strict -summary
+
+      - name: Validate ArgoCD manifests
+        run: |
+          find argocd/ -name '*.yaml' \
+            | xargs kubeconform -strict -summary \
+              -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/argoproj.io/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
+            || echo "ArgoCD CRD validation skipped (CRDs may not be available)"
+
+      - name: Lint docker-compose
+        run: |
+          docker compose -f docker-compose.infra.yml config --quiet

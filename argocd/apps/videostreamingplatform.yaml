@@ -1,0 +1,20 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: videostreamingplatform
+  namespace: argocd
+spec:
+  project: platform
+  source:
+    repoURL: https://github.com/yourusername/videostreamingplatform.git
+    targetRevision: main
+    path: k8s/local
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: videostreamingplatform
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

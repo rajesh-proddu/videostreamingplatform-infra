@@ -1,0 +1,18 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: data
+  namespace: argocd
+spec:
+  description: Data services (analytics + recommendations)
+  sourceRepos:
+    - https://github.com/yourusername/videostreamingplatform-analytics.git
+    - https://github.com/yourusername/videostreamingplatform-recommendations.git
+  destinations:
+    - namespace: analytics
+      server: https://kubernetes.default.svc
+    - namespace: recommendations
+      server: https://kubernetes.default.svc
+  clusterResourceWhitelist:
+    - group: ''
+      kind: Namespace
