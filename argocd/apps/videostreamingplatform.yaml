@@ -6,7 +6,7 @@ metadata:
 spec:
   project: platform
   source:
-    repoURL: https://github.com/yourusername/videostreamingplatform.git
+    repoURL: https://github.com/rajesh-proddu/videostreamingplatform.git
     targetRevision: main
     path: k8s/local
   destination:

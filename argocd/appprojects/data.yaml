@@ -6,8 +6,8 @@ metadata:
 spec:
   description: Data services (analytics + recommendations)
   sourceRepos:
-    - https://github.com/yourusername/videostreamingplatform-analytics.git
-    - https://github.com/yourusername/videostreamingplatform-recommendations.git
+    - https://github.com/rajesh-proddu/videostreamingplatform-analytics.git
+    - https://github.com/rajesh-proddu/videostreamingplatform-recommendations.git
   destinations:
     - namespace: analytics
       server: https://kubernetes.default.svc

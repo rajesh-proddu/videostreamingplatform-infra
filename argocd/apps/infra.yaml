@@ -6,19 +6,19 @@ metadata:
 spec:
   project: platform
   sources:
-    - repoURL: https://github.com/yourusername/videostreamingplatform-infra.git
+    - repoURL: https://github.com/rajesh-proddu/videostreamingplatform-infra.git
       targetRevision: main
       path: kafka
-    - repoURL: https://github.com/yourusername/videostreamingplatform-infra.git
+    - repoURL: https://github.com/rajesh-proddu/videostreamingplatform-infra.git
       targetRevision: main
       path: schema-registry
-    - repoURL: https://github.com/yourusername/videostreamingplatform-infra.git
+    - repoURL: https://github.com/rajesh-proddu/videostreamingplatform-infra.git
       targetRevision: main
       path: pgvector
-    - repoURL: https://github.com/yourusername/videostreamingplatform-infra.git
+    - repoURL: https://github.com/rajesh-proddu/videostreamingplatform-infra.git
       targetRevision: main
       path: networking
-    - repoURL: https://github.com/yourusername/videostreamingplatform-infra.git
+    - repoURL: https://github.com/rajesh-proddu/videostreamingplatform-infra.git
       targetRevision: main
       path: rbac
   destination:

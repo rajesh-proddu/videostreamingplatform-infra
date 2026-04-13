@@ -6,8 +6,8 @@ metadata:
 spec:
   description: Platform services (main app + infra)
   sourceRepos:
-    - https://github.com/yourusername/videostreamingplatform.git
-    - https://github.com/yourusername/videostreamingplatform-infra.git
+    - https://github.com/rajesh-proddu/videostreamingplatform.git
+    - https://github.com/rajesh-proddu/videostreamingplatform-infra.git
   destinations:
     - namespace: videostreamingplatform
       server: https://kubernetes.default.svc
