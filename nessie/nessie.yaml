@@ -1,0 +1,89 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: iceberg
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nessie
+  namespace: iceberg
+  labels:
+    app: nessie
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nessie
+  template:
+    metadata:
+      labels:
+        app: nessie
+    spec:
+      containers:
+        - name: nessie
+          image: ghcr.io/projectnessie/nessie:0.95.0
+          ports:
+            - containerPort: 19120
+              name: http
+          env:
+            - name: NESSIE_VERSION_STORE_TYPE
+              value: ROCKSDB
+            - name: NESSIE_CATALOG_DEFAULT_WAREHOUSE
+              value: s3://iceberg-warehouse/
+            - name: NESSIE_CATALOG_WAREHOUSES_WAREHOUSE_LOCATION
+              value: s3://iceberg-warehouse/
+          readinessProbe:
+            httpGet:
+              path: /api/v2/config
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /api/v2/config
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+          volumeMounts:
+            - name: nessie-data
+              mountPath: /nessie/data
+      volumes:
+        - name: nessie-data
+          persistentVolumeClaim:
+            claimName: nessie-data
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: nessie-data
+  namespace: iceberg
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: nessie
+  namespace: iceberg
+  labels:
+    app: nessie
+spec:
+  selector:
+    app: nessie
+  ports:
+    - port: 19120
+      targetPort: http
+      name: http
+  type: ClusterIP
