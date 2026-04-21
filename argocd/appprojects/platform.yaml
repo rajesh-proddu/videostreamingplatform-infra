@@ -4,7 +4,7 @@ metadata:
   name: platform
   namespace: argocd
 spec:
-  description: Platform services (main app + infra + elasticsearch)
+  description: Platform services (main app + infra + elasticsearch + analytics + recommendations)
   sourceRepos:
     - https://github.com/rajesh-proddu/videostreamingplatform.git
     - https://github.com/rajesh-proddu/videostreamingplatform-infra.git
@@ -12,6 +12,10 @@ spec:
     - namespace: videostreamingplatform
       server: https://kubernetes.default.svc
     - namespace: infra
+      server: https://kubernetes.default.svc
+    - namespace: analytics
+      server: https://kubernetes.default.svc
+    - namespace: recommendations
       server: https://kubernetes.default.svc
   clusterResourceWhitelist:
     - group: ''
