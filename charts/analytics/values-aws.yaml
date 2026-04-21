@@ -13,3 +13,11 @@ env:
   KAFKA_BROKERS: BOOTSTRAP_BROKERS_PLACEHOLDER
   ICEBERG_WAREHOUSE: s3://videostreamingplatform-iceberg-warehouse-prod/
   GLUE_SCHEMA_REGISTRY_NAME: videostreamingplatform-prod
+  # OpenSearch Service — kafka-es-consumer writes the video search index.
+  # terraform output opensearch_endpoint
+  ELASTICSEARCH_URL: OPENSEARCH_ENDPOINT_PLACEHOLDER
+  ELASTICSEARCH_AWS_AUTH: "true"
+  # Athena — ad-hoc Iceberg queries (catalog-admin compaction metrics, etc.).
+  # terraform output athena_workgroup / athena_results_bucket
+  ATHENA_WORKGROUP: videostreamingplatform-prod
+  ATHENA_RESULTS_BUCKET: videostreamingplatform-athena-results-prod

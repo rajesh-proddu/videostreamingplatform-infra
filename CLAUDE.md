@@ -112,8 +112,15 @@ OIDC provider via remote state from the platform repo:
 | `msk.tf` | MSK Serverless cluster (SASL/IAM) |
 | `pgvector.tf` | Aurora Postgres Serverless v2 + Secrets Manager password |
 | `glue.tf` | Glue catalog database, Schema Registry, Iceberg S3 bucket |
+| `opensearch.tf` | OpenSearch Service (VPC, fine-grained IAM auth) — video search index |
+| `athena.tf` | Athena workgroup (engine v3 for Iceberg) + results S3 bucket |
 | `iam.tf` | IRSA roles for `analytics-sa` and `recommendations-sa` |
 | `outputs.tf` | Bootstrap brokers, endpoints, role ARNs, secret ARN |
+
+IAM scope per IRSA role:
+
+- `analytics-sa` → Glue catalog + Schema Registry, Iceberg S3 RW, MSK produce/consume, **OpenSearch index RW**, **Athena query + results bucket RW**
+- `recommendations-sa` → Bedrock invoke (ranking + embedding), Secrets Manager read, MSK consume, **OpenSearch read**
 
 ## CI
 

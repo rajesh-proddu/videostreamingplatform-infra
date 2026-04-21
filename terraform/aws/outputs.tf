@@ -67,3 +67,23 @@ output "bedrock_embedding_model_id" {
   description = "Bedrock model used for embeddings"
   value       = var.bedrock_embedding_model_id
 }
+
+output "opensearch_endpoint" {
+  description = "OpenSearch Service VPC endpoint (HTTPS)"
+  value       = "https://${aws_opensearch_domain.search.endpoint}"
+}
+
+output "opensearch_domain_arn" {
+  description = "OpenSearch Service domain ARN"
+  value       = aws_opensearch_domain.search.arn
+}
+
+output "athena_workgroup" {
+  description = "Athena workgroup name"
+  value       = aws_athena_workgroup.analytics.name
+}
+
+output "athena_results_bucket" {
+  description = "S3 bucket for Athena query results"
+  value       = aws_s3_bucket.athena_results.bucket
+}

@@ -15,12 +15,13 @@ charts from this repo onto the target cluster.
 
 In AWS the `infra` namespace workloads are replaced by managed services:
 MSK Serverless (Kafka), Glue (Schema Registry + catalog), Aurora Postgres
-Serverless v2 (pgvector), and S3 (Iceberg warehouse).
+Serverless v2 (pgvector), S3 (Iceberg warehouse), OpenSearch Service
+(video search index), and an Athena workgroup for ad-hoc Iceberg queries.
 
 ## Repository Layout
 
 ```
-terraform/aws/     — MSK, Aurora pgvector, Glue, Iceberg S3 bucket, IRSA roles
+terraform/aws/     — MSK, Aurora pgvector, Glue, Iceberg S3, OpenSearch, Athena, IRSA
 charts/            — Helm charts rendered by ArgoCD
   analytics/         values.yaml (local) + values-aws.yaml (AWS overlay)
   recommendations/   values.yaml (local) + values-aws.yaml (AWS overlay)
@@ -53,8 +54,9 @@ make down         # Stop all services
    ```
 2. Substitute terraform outputs into `charts/*/values-aws.yaml`
    (`BOOTSTRAP_BROKERS_PLACEHOLDER`, `ROLE_ARN_PLACEHOLDER`,
-   `PG_ENDPOINT_PLACEHOLDER`, `PG_SECRET_ARN_PLACEHOLDER`) via
-   external-secrets-operator or a bootstrap PR.
+   `PG_ENDPOINT_PLACEHOLDER`, `PG_SECRET_ARN_PLACEHOLDER`,
+   `OPENSEARCH_ENDPOINT_PLACEHOLDER`) via external-secrets-operator
+   or a bootstrap PR.
 3. ArgoCD auto-syncs `analytics` and `recommendations` from the Helm charts.
 
 Terraform remote state reads VPC + EKS OIDC provider from the platform

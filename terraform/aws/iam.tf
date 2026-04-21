@@ -149,6 +149,50 @@ data "aws_iam_policy_document" "analytics_policy" {
       "arn:aws:kafka:${var.aws_region}:${local.account_id}:group/${aws_msk_serverless_cluster.events.cluster_name}/*",
     ]
   }
+  # OpenSearch — write the video search index (kafka-es-consumer).
+  statement {
+    sid    = "OpenSearchWrite"
+    effect = "Allow"
+    actions = [
+      "es:ESHttpGet",
+      "es:ESHttpHead",
+      "es:ESHttpPost",
+      "es:ESHttpPut",
+      "es:ESHttpDelete",
+    ]
+    resources = [
+      aws_opensearch_domain.search.arn,
+      "${aws_opensearch_domain.search.arn}/*",
+    ]
+  }
+  # Athena — ad-hoc Iceberg queries on Glue-catalogued tables.
+  statement {
+    sid    = "AthenaQuery"
+    effect = "Allow"
+    actions = [
+      "athena:StartQueryExecution",
+      "athena:StopQueryExecution",
+      "athena:GetQueryExecution",
+      "athena:GetQueryResults",
+      "athena:GetWorkGroup",
+    ]
+    resources = [aws_athena_workgroup.analytics.arn]
+  }
+  statement {
+    sid    = "AthenaResultsBucket"
+    effect = "Allow"
+    actions = [
+      "s3:GetObject",
+      "s3:PutObject",
+      "s3:AbortMultipartUpload",
+      "s3:ListBucket",
+      "s3:GetBucketLocation",
+    ]
+    resources = [
+      aws_s3_bucket.athena_results.arn,
+      "${aws_s3_bucket.athena_results.arn}/*",
+    ]
+  }
 }
 
 resource "aws_iam_policy" "analytics" {
@@ -222,6 +266,20 @@ data "aws_iam_policy_document" "recommendations_policy" {
     ]
     resources = [
       "arn:aws:kafka:${var.aws_region}:${local.account_id}:group/${aws_msk_serverless_cluster.events.cluster_name}/*",
+    ]
+  }
+  # OpenSearch — read the video search index for candidate retrieval.
+  statement {
+    sid    = "OpenSearchRead"
+    effect = "Allow"
+    actions = [
+      "es:ESHttpGet",
+      "es:ESHttpHead",
+      "es:ESHttpPost",
+    ]
+    resources = [
+      aws_opensearch_domain.search.arn,
+      "${aws_opensearch_domain.search.arn}/*",
     ]
   }
 }

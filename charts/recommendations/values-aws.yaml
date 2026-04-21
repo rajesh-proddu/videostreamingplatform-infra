@@ -25,3 +25,8 @@ config:
   KAFKA_SASL_MECHANISM: AWS_MSK_IAM
   # terraform output msk_bootstrap_brokers_sasl_iam
   KAFKA_BROKERS: BOOTSTRAP_BROKERS_PLACEHOLDER
+
+  # OpenSearch Service — candidate retrieval for the LLM re-ranker.
+  # terraform output opensearch_endpoint
+  ELASTICSEARCH_URL: OPENSEARCH_ENDPOINT_PLACEHOLDER
+  ELASTICSEARCH_AWS_AUTH: "true"

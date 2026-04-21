@@ -66,3 +66,27 @@ variable "glue_database_name" {
   type        = string
   default     = "analytics"
 }
+
+variable "opensearch_engine_version" {
+  description = "OpenSearch engine version"
+  type        = string
+  default     = "OpenSearch_2.13"
+}
+
+variable "opensearch_instance_type" {
+  description = "OpenSearch data-node instance type"
+  type        = string
+  default     = "t3.small.search"
+}
+
+variable "opensearch_instance_count" {
+  description = "OpenSearch data-node count (>=3 enables multi-AZ)"
+  type        = number
+  default     = 1
+}
+
+variable "opensearch_volume_size_gb" {
+  description = "EBS volume size per OpenSearch data node (GB)"
+  type        = number
+  default     = 30
+}
