@@ -1,13 +1,15 @@
 # ─── IRSA roles ──────────────────────────────────────────────────────────────
 # Two service-account-bound IAM roles, one per namespace:
 #
-#   analytics        → Glue + Iceberg S3 + MSK IAM auth
-#   recommendations  → Bedrock invoke + MSK IAM auth + Secrets Manager read
+#   analytics        → Glue catalog + Iceberg S3 + Athena
+#   recommendations  → Bedrock invoke (LLM + embeddings)
+#
+# Kafka and Elasticsearch run in-cluster (KRaft StatefulSet + ES StatefulSet)
+# so they need no IAM grants. pgvector is in-cluster too.
 #
 # The trust policy binds each role to a specific namespace + ServiceAccount
 # via the EKS cluster's OIDC provider.
 
-# Reusable trust policy template per (namespace, serviceaccount).
 data "aws_iam_policy_document" "analytics_trust" {
   statement {
     effect  = "Allow"
@@ -113,58 +115,6 @@ data "aws_iam_policy_document" "analytics_policy" {
       "${aws_s3_bucket.iceberg_warehouse.arn}/*",
     ]
   }
-  # MSK IAM auth (produce + consume)
-  statement {
-    sid    = "MSKClusterConnect"
-    effect = "Allow"
-    actions = [
-      "kafka-cluster:Connect",
-      "kafka-cluster:AlterCluster",
-      "kafka-cluster:DescribeCluster",
-    ]
-    resources = [aws_msk_serverless_cluster.events.arn]
-  }
-  statement {
-    sid    = "MSKTopicReadWrite"
-    effect = "Allow"
-    actions = [
-      "kafka-cluster:ReadData",
-      "kafka-cluster:WriteData",
-      "kafka-cluster:DescribeTopic",
-      "kafka-cluster:CreateTopic",
-      "kafka-cluster:DescribeTopicDynamicConfiguration",
-    ]
-    resources = [
-      "arn:aws:kafka:${var.aws_region}:${local.account_id}:topic/${aws_msk_serverless_cluster.events.cluster_name}/*",
-    ]
-  }
-  statement {
-    sid    = "MSKGroupConsume"
-    effect = "Allow"
-    actions = [
-      "kafka-cluster:AlterGroup",
-      "kafka-cluster:DescribeGroup",
-    ]
-    resources = [
-      "arn:aws:kafka:${var.aws_region}:${local.account_id}:group/${aws_msk_serverless_cluster.events.cluster_name}/*",
-    ]
-  }
-  # OpenSearch — write the video search index (kafka-es-consumer).
-  statement {
-    sid    = "OpenSearchWrite"
-    effect = "Allow"
-    actions = [
-      "es:ESHttpGet",
-      "es:ESHttpHead",
-      "es:ESHttpPost",
-      "es:ESHttpPut",
-      "es:ESHttpDelete",
-    ]
-    resources = [
-      aws_opensearch_domain.search.arn,
-      "${aws_opensearch_domain.search.arn}/*",
-    ]
-  }
   # Athena — ad-hoc Iceberg queries on Glue-catalogued tables.
   statement {
     sid    = "AthenaQuery"
@@ -224,62 +174,6 @@ data "aws_iam_policy_document" "recommendations_policy" {
     resources = [
       "arn:aws:bedrock:${var.aws_region}::foundation-model/${var.bedrock_ranking_model_id}",
       "arn:aws:bedrock:${var.aws_region}::foundation-model/${var.bedrock_embedding_model_id}",
-    ]
-  }
-  # Pgvector master-creds secret (read-only)
-  statement {
-    sid    = "PgvectorSecretRead"
-    effect = "Allow"
-    actions = [
-      "secretsmanager:GetSecretValue",
-      "secretsmanager:DescribeSecret",
-    ]
-    resources = [aws_secretsmanager_secret.pgvector.arn]
-  }
-  # MSK IAM auth (consume watch-events for signal enrichment; optional producer)
-  statement {
-    sid    = "MSKClusterConnect"
-    effect = "Allow"
-    actions = [
-      "kafka-cluster:Connect",
-      "kafka-cluster:DescribeCluster",
-    ]
-    resources = [aws_msk_serverless_cluster.events.arn]
-  }
-  statement {
-    sid    = "MSKTopicRead"
-    effect = "Allow"
-    actions = [
-      "kafka-cluster:ReadData",
-      "kafka-cluster:DescribeTopic",
-    ]
-    resources = [
-      "arn:aws:kafka:${var.aws_region}:${local.account_id}:topic/${aws_msk_serverless_cluster.events.cluster_name}/*",
-    ]
-  }
-  statement {
-    sid    = "MSKGroupConsume"
-    effect = "Allow"
-    actions = [
-      "kafka-cluster:AlterGroup",
-      "kafka-cluster:DescribeGroup",
-    ]
-    resources = [
-      "arn:aws:kafka:${var.aws_region}:${local.account_id}:group/${aws_msk_serverless_cluster.events.cluster_name}/*",
-    ]
-  }
-  # OpenSearch — read the video search index for candidate retrieval.
-  statement {
-    sid    = "OpenSearchRead"
-    effect = "Allow"
-    actions = [
-      "es:ESHttpGet",
-      "es:ESHttpHead",
-      "es:ESHttpPost",
-    ]
-    resources = [
-      aws_opensearch_domain.search.arn,
-      "${aws_opensearch_domain.search.arn}/*",
     ]
   }
 }

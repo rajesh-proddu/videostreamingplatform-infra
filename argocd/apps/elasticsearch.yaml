@@ -1,24 +1,17 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: external-secrets-config
+  name: elasticsearch
   namespace: argocd
-  annotations:
-    # Runs after the operator (wave -10) and before consumers (default 0).
-    argocd.argoproj.io/sync-wave: "-5"
 spec:
   project: platform
   source:
     repoURL: https://github.com/rajesh-proddu/videostreamingplatform-infra.git
     targetRevision: main
-    path: charts/external-secrets-config
-    helm:
-      valueFiles:
-        - values.yaml
-        - values-aws.yaml
+    path: elasticsearch
   destination:
     server: https://kubernetes.default.svc
-    namespace: external-secrets
+    namespace: videostreamingplatform
   syncPolicy:
     automated:
       prune: true

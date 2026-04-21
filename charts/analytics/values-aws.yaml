@@ -1,27 +1,19 @@
-# AWS overlay — EKS + MSK Serverless (IAM auth) + Glue + Iceberg on S3 +
-# OpenSearch. Dynamic endpoints (brokers, OpenSearch URL, Iceberg warehouse,
-# Glue registry, Athena workgroup + results bucket) come from AWS SSM
-# Parameter Store via external-secrets-operator — no placeholders left to
-# substitute by hand.
+# AWS overlay — EKS + in-cluster Kafka (KRaft) + in-cluster Elasticsearch +
+# Glue catalog + Iceberg on S3 + Athena. Kafka and Elasticsearch are the same
+# StatefulSets that run locally, just deployed via ArgoCD on EKS. No MSK,
+# no OpenSearch, no ESO.
 #
-# The ServiceAccount IRSA role ARN stays here because SA annotations can't
-# be rendered by ESO. It's deterministic from terraform
-# (`terraform output analytics_irsa_role_arn`): commit the value once.
+# IRSA role ARN and the S3/Athena names come from `terraform/aws/` outputs —
+# paste them here once after `terraform apply` (or run `terraform output`
+# and commit the values).
 
 serviceAccount:
-  # arn:aws:iam::<account_id>:role/videostreamingplatform-analytics-<env>
+  # terraform output analytics_irsa_role_arn
   roleArn: ROLE_ARN_PLACEHOLDER
 
-env:
-  ELASTICSEARCH_AWS_AUTH: "true"
-
-# All former dynamic placeholders now come from SSM — only the static SASL
-# knobs remain. We keep them in envDynamic so the ConfigMap reflects what
-# the pod expects if ESO is ever disabled for debugging.
+# Real S3 + Glue + Athena targets on AWS.
 envDynamic:
-  KAFKA_SECURITY_PROTOCOL: SASL_SSL
-  KAFKA_SASL_MECHANISM: AWS_MSK_IAM
-
-externalSecret:
-  enabled: true
-  ssmPathPrefix: /videostreamingplatform/prod
+  ICEBERG_WAREHOUSE: s3://videostreamingplatform-iceberg-warehouse-dev/
+  GLUE_SCHEMA_REGISTRY_NAME: videostreamingplatform-dev
+  ATHENA_WORKGROUP: videostreamingplatform-dev
+  ATHENA_RESULTS_BUCKET: videostreamingplatform-athena-results-dev

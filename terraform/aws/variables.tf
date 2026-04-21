@@ -25,36 +25,6 @@ variable "bedrock_embedding_model_id" {
   default     = "amazon.titan-embed-text-v2:0"
 }
 
-variable "pgvector_database_name" {
-  description = "Postgres database name used by the recommendations service"
-  type        = string
-  default     = "recommendations"
-}
-
-variable "pgvector_master_username" {
-  description = "Master username for Aurora Postgres"
-  type        = string
-  default     = "recoadmin"
-}
-
-variable "aurora_min_capacity" {
-  description = "Aurora Serverless v2 minimum ACU"
-  type        = number
-  default     = 0.5
-}
-
-variable "aurora_max_capacity" {
-  description = "Aurora Serverless v2 maximum ACU"
-  type        = number
-  default     = 4
-}
-
-variable "msk_kafka_version" {
-  description = "Kafka version for MSK Serverless is fixed by AWS; left for documentation only."
-  type        = string
-  default     = "managed-by-msk-serverless"
-}
-
 variable "iceberg_warehouse_bucket" {
   description = "S3 bucket for the Iceberg warehouse. Created by this module."
   type        = string
@@ -65,28 +35,4 @@ variable "glue_database_name" {
   description = "Glue catalog database for Iceberg tables"
   type        = string
   default     = "analytics"
-}
-
-variable "opensearch_engine_version" {
-  description = "OpenSearch engine version"
-  type        = string
-  default     = "OpenSearch_2.13"
-}
-
-variable "opensearch_instance_type" {
-  description = "OpenSearch data-node instance type"
-  type        = string
-  default     = "t3.small.search"
-}
-
-variable "opensearch_instance_count" {
-  description = "OpenSearch data-node count (>=3 enables multi-AZ)"
-  type        = number
-  default     = 1
-}
-
-variable "opensearch_volume_size_gb" {
-  description = "EBS volume size per OpenSearch data node (GB)"
-  type        = number
-  default     = 30
 }

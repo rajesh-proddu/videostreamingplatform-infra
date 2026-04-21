@@ -40,6 +40,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "iceberg_warehouse" {
   rule {
     id     = "tiered-storage"
     status = "Enabled"
+    filter {}
     transition {
       days          = 90
       storage_class = "STANDARD_IA"

@@ -1,8 +1,0 @@
-# Defaults intentionally empty — see values-aws.yaml. Keeps the chart
-# render-safe if anyone templates it without an overlay.
-aws:
-  enabled: false
-  region: us-east-1
-  # Service account used by ESO (created by the external-secrets chart).
-  serviceAccountName: external-secrets
-  serviceAccountNamespace: external-secrets

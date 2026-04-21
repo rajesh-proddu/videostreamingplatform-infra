@@ -20,28 +20,16 @@ env:
   ICEBERG_CATALOG_NAME: glue
   ICEBERG_CATALOG_TYPE: glue
   ICEBERG_GLUE_DATABASE: analytics
-  ELASTICSEARCH_AWS_AUTH: "false"
 
-# Dynamic env — local defaults. When `externalSecret.enabled` is true these
-# entries are dropped from the ConfigMap and the ExternalSecret provides
-# equivalent keys from AWS SSM Parameter Store (which win via envFrom order).
+# Dynamic env — endpoints. Local defaults point at in-cluster + LocalStack;
+# values-aws.yaml overrides the S3/Glue/Athena targets for real AWS.
 envDynamic:
-  KAFKA_SECURITY_PROTOCOL: PLAINTEXT
-  KAFKA_SASL_MECHANISM: ""
   KAFKA_BROKERS: kafka.infra.svc.cluster.local:9092
   ELASTICSEARCH_URL: http://elasticsearch.videostreamingplatform.svc.cluster.local:9200
   ICEBERG_WAREHOUSE: s3://iceberg-warehouse/
   GLUE_SCHEMA_REGISTRY_NAME: videostreamingplatform-dev
   ATHENA_WORKGROUP: ""
   ATHENA_RESULTS_BUCKET: ""
-
-externalSecret:
-  enabled: false
-  secretName: analytics-env-dynamic
-  clusterSecretStore: aws-ssm
-  refreshInterval: 5m
-  # Path prefix in AWS SSM Parameter Store. Set per-env in values-aws.yaml.
-  ssmPathPrefix: /videostreamingplatform/dev
 
 kafkaEsConsumer:
   enabled: true

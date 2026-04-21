@@ -9,16 +9,6 @@ data:
   {{- range $k, $v := .Values.config }}
   {{ $k }}: {{ $v | quote }}
   {{- end }}
-  {{- if not .Values.externalSecret.enabled }}
   {{- range $k, $v := .Values.configDynamic }}
   {{ $k }}: {{ $v | quote }}
-  {{- end }}
-  {{- else }}
-  {{/* When ESO is enabled, keep only static selector knobs from configDynamic
-       here. Endpoints ship in the ESO Secret. */}}
-  {{- range $k := (list "LLM_PROVIDER" "AWS_REGION" "BEDROCK_MODEL_ID" "BEDROCK_EMBEDDING_MODEL_ID" "KAFKA_SECURITY_PROTOCOL" "KAFKA_SASL_MECHANISM" "PGVECTOR_DATABASE") }}
-  {{- if hasKey $.Values.configDynamic $k }}
-  {{ $k }}: {{ index $.Values.configDynamic $k | quote }}
-  {{- end }}
-  {{- end }}
   {{- end }}

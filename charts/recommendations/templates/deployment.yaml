@@ -27,10 +27,6 @@ spec:
           envFrom:
             - configMapRef:
                 name: recommendation-config
-            {{- if .Values.externalSecret.enabled }}
-            - secretRef:
-                name: {{ .Values.externalSecret.secretName }}
-            {{- end }}
           readinessProbe:
             httpGet:
               path: {{ .Values.deployment.readinessProbe.path }}

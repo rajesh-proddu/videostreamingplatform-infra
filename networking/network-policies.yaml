@@ -40,6 +40,27 @@ spec:
         - port: 5432
           protocol: TCP
 ---
+# Allow analytics + recommendations namespaces to access Elasticsearch in videostreamingplatform namespace
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-elasticsearch-access
+  namespace: videostreamingplatform
+spec:
+  podSelector:
+    matchLabels:
+      app: elasticsearch
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              app.kubernetes.io/part-of: videostreamingplatform
+      ports:
+        - port: 9200
+          protocol: TCP
+---
 # Allow all app namespaces to access LocalStack (Glue Schema Registry) in infra namespace
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy

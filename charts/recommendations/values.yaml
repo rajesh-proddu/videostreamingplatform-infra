@@ -18,26 +18,15 @@ image:
 config:
   API_PORT: "8000"
   MAX_RECOMMENDATIONS: "10"
-  ELASTICSEARCH_AWS_AUTH: "false"
 
-# Dynamic config — local defaults. AWS overlay flips externalSecret.enabled
-# and the values below get overridden by an ESO-managed Secret from SSM.
+# Dynamic config — endpoints. Local defaults point at in-cluster services;
+# values-aws.yaml overrides LLM_PROVIDER and the Bedrock model IDs.
 configDynamic:
   LLM_PROVIDER: ollama
   ELASTICSEARCH_URL: http://elasticsearch.videostreamingplatform.svc.cluster.local:9200
-  KAFKA_SECURITY_PROTOCOL: PLAINTEXT
-  KAFKA_SASL_MECHANISM: ""
-  KAFKA_BROKERS: ""
-  PGVECTOR_ENDPOINT: ""
+  KAFKA_BROKERS: kafka.infra.svc.cluster.local:9092
+  PGVECTOR_ENDPOINT: pgvector.infra.svc.cluster.local
   PGVECTOR_DATABASE: recommendations
-  PGVECTOR_SECRET_ARN: ""
-
-externalSecret:
-  enabled: false
-  secretName: recommendation-config-dynamic
-  clusterSecretStore: aws-ssm
-  refreshInterval: 5m
-  ssmPathPrefix: /videostreamingplatform/dev
 
 deployment:
   replicas: 2

@@ -1,28 +1,17 @@
-# AWS overlay — EKS + Bedrock (Claude 3.5 Sonnet + Titan Embed v2) + Aurora
-# Postgres Serverless v2 + MSK Serverless (IAM auth) + OpenSearch.
-# Dynamic endpoints (brokers, OpenSearch URL, pgvector endpoint/secret ARN)
-# come from AWS SSM Parameter Store via external-secrets-operator — no
-# placeholders left to substitute by hand.
-#
-# The ServiceAccount IRSA role ARN stays here because SA annotations can't
-# be rendered by ESO. It's deterministic from terraform
-# (`terraform output recommendations_irsa_role_arn`): commit the value once.
+# AWS overlay — EKS + Bedrock (Claude 3.5 Sonnet + Titan Embed v2) +
+# in-cluster Kafka (KRaft) + in-cluster Elasticsearch + in-cluster pgvector.
+# Matches the local topology — the only AWS-specific things are Bedrock for
+# LLM/embeddings and the IRSA role ARN.
 
 serviceAccount:
-  # arn:aws:iam::<account_id>:role/videostreamingplatform-recommendations-<env>
+  # terraform output recommendations_irsa_role_arn
   roleArn: ROLE_ARN_PLACEHOLDER
-
-config:
-  ELASTICSEARCH_AWS_AUTH: "true"
 
 configDynamic:
   LLM_PROVIDER: bedrock
   AWS_REGION: us-east-1
   BEDROCK_MODEL_ID: anthropic.claude-3-5-sonnet-20241022-v2:0
   BEDROCK_EMBEDDING_MODEL_ID: amazon.titan-embed-text-v2:0
-  KAFKA_SECURITY_PROTOCOL: SASL_SSL
-  KAFKA_SASL_MECHANISM: AWS_MSK_IAM
-
-externalSecret:
-  enabled: true
-  ssmPathPrefix: /videostreamingplatform/prod
+  KAFKA_BROKERS: kafka.infra.svc.cluster.local:9092
+  PGVECTOR_ENDPOINT: pgvector.infra.svc.cluster.local
+  PGVECTOR_DATABASE: recommendations

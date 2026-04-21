@@ -20,10 +20,6 @@ spec:
           envFrom:
             - configMapRef:
                 name: analytics-env
-            {{- if .Values.externalSecret.enabled }}
-            - secretRef:
-                name: {{ .Values.externalSecret.secretName }}
-            {{- end }}
 {{- end }}
 {{- if .Values.catalogAdmin.compaction.enabled }}
 ---
@@ -50,10 +46,6 @@ spec:
               envFrom:
                 - configMapRef:
                     name: analytics-env
-                {{- if $.Values.externalSecret.enabled }}
-                - secretRef:
-                    name: {{ $.Values.externalSecret.secretName }}
-                {{- end }}
               resources:
                 {{- toYaml .Values.catalogAdmin.compaction.resources | nindent 16 }}
 {{- end }}
@@ -82,8 +74,4 @@ spec:
               envFrom:
                 - configMapRef:
                     name: analytics-env
-                {{- if $.Values.externalSecret.enabled }}
-                - secretRef:
-                    name: {{ $.Values.externalSecret.secretName }}
-                {{- end }}
 {{- end }}
