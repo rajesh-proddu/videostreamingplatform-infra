@@ -4,7 +4,7 @@ metadata:
   name: analytics
   namespace: argocd
 spec:
-  project: data
+  project: platform
   source:
     repoURL: https://github.com/rajesh-proddu/videostreamingplatform-infra.git
     targetRevision: main
