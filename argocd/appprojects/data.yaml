@@ -6,6 +6,8 @@ metadata:
 spec:
   description: Data services (analytics + recommendations)
   sourceRepos:
+    # Helm charts for analytics + recommendations live in the infra (GitOps) repo.
+    - https://github.com/rajesh-proddu/videostreamingplatform-infra.git
     - https://github.com/rajesh-proddu/videostreamingplatform-analytics.git
     - https://github.com/rajesh-proddu/videostreamingplatform-recommendations.git
   destinations:

@@ -6,9 +6,16 @@ metadata:
 spec:
   project: data
   source:
-    repoURL: https://github.com/rajesh-proddu/videostreamingplatform-recommendations.git
+    repoURL: https://github.com/rajesh-proddu/videostreamingplatform-infra.git
     targetRevision: main
-    path: k8s
+    path: charts/recommendations
+    # AWS deploy: Bedrock + Aurora pgvector + IRSA. Drop `valueFiles`
+    # (or point at a local overlay) to run with Ollama + in-cluster
+    # pgvector against Docker Compose / Kind.
+    helm:
+      valueFiles:
+        - values.yaml
+        - values-aws.yaml
   destination:
     server: https://kubernetes.default.svc
     namespace: recommendations

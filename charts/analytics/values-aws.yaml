@@ -1,0 +1,15 @@
+# AWS overlay — EKS + MSK Serverless (IAM auth) + Glue + Iceberg on S3.
+# Placeholders are substituted from terraform outputs via external-secrets-operator
+# or a bootstrap PR prior to first sync.
+
+serviceAccount:
+  # terraform output analytics_irsa_role_arn
+  roleArn: ROLE_ARN_PLACEHOLDER
+
+env:
+  KAFKA_SECURITY_PROTOCOL: SASL_SSL
+  KAFKA_SASL_MECHANISM: AWS_MSK_IAM
+  # terraform output msk_bootstrap_brokers_sasl_iam
+  KAFKA_BROKERS: BOOTSTRAP_BROKERS_PLACEHOLDER
+  ICEBERG_WAREHOUSE: s3://videostreamingplatform-iceberg-warehouse-prod/
+  GLUE_SCHEMA_REGISTRY_NAME: videostreamingplatform-prod

@@ -1,54 +1,85 @@
-# Video Streaming Platform — Infrastructure
+# Video Streaming Platform — Infrastructure (GitOps)
 
-Shared infrastructure for the video streaming platform, managed via ArgoCD GitOps.
+Shared infrastructure **and** GitOps source of truth for the video streaming
+platform. Terraform provisions AWS managed services; ArgoCD renders Helm
+charts from this repo onto the target cluster.
 
 ## Components
 
 | Component | Purpose | Namespace |
 |-----------|---------|-----------|
-| Kafka (KRaft) | Event streaming (video-events, watch-events) | infra |
+| Kafka (KRaft) | Event streaming (video-events, watch-events) — local only | infra |
 | LocalStack | AWS Glue Schema Registry (local dev) | infra |
-| pgvector | Vector database for recommendation embeddings | infra |
+| pgvector | Vector database for recommendation embeddings — local only | infra |
 | ArgoCD | GitOps controller for all repos | argocd |
 
-## Architecture
+In AWS the `infra` namespace workloads are replaced by managed services:
+MSK Serverless (Kafka), Glue (Schema Registry + catalog), Aurora Postgres
+Serverless v2 (pgvector), and S3 (Iceberg warehouse).
+
+## Repository Layout
 
 ```
-Single K8s Cluster
-├── argocd namespace      — ArgoCD controller
-├── infra namespace       — Kafka, LocalStack, pgvector (this repo)
-├── videostreamingplatform — Go services + MySQL/MinIO/ES
-├── analytics namespace   — Spark + Kafka→ES consumer
-└── recommendations namespace — LangGraph AI agent
+terraform/aws/     — MSK, Aurora pgvector, Glue, Iceberg S3 bucket, IRSA roles
+charts/            — Helm charts rendered by ArgoCD
+  analytics/         values.yaml (local) + values-aws.yaml (AWS overlay)
+  recommendations/   values.yaml (local) + values-aws.yaml (AWS overlay)
+argocd/
+  appprojects/     — platform, data
+  apps/            — videostreamingplatform, infra, analytics, recommendations
+kafka/             — local Kafka StatefulSet + topics-init Job
+pgvector/          — local pgvector StatefulSet
+schema-registry/   — local LocalStack (Glue emulation)
+networking/        — namespaces + NetworkPolicies
+rbac/              — per-namespace ServiceAccounts
 ```
 
 ## Local Development
 
-### Start shared infrastructure
 ```bash
-make up      # Start Kafka, LocalStack, pgvector via Docker Compose
-make status  # Check service health
-make down    # Stop all services
+make up           # Start Kafka, LocalStack, pgvector via Docker Compose
+make apply-local  # Apply all K8s manifests to local cluster
+make status       # Check service health
+make down         # Stop all services
 ```
 
-### Apply to local K8s cluster
-```bash
-make apply-local  # Apply all K8s manifests
-```
+## AWS Deployment
 
-## ArgoCD Setup
+1. Provision managed services:
+   ```bash
+   cd terraform/aws
+   terraform init
+   terraform apply
+   ```
+2. Substitute terraform outputs into `charts/*/values-aws.yaml`
+   (`BOOTSTRAP_BROKERS_PLACEHOLDER`, `ROLE_ARN_PLACEHOLDER`,
+   `PG_ENDPOINT_PLACEHOLDER`, `PG_SECRET_ARN_PLACEHOLDER`) via
+   external-secrets-operator or a bootstrap PR.
+3. ArgoCD auto-syncs `analytics` and `recommendations` from the Helm charts.
 
-ArgoCD manages deployments from all repos:
+Terraform remote state reads VPC + EKS OIDC provider from the platform
+repo's state, so this repo only owns data-plane resources.
 
-| App | Source Repo | Target Namespace |
-|-----|-----------|-----------------|
-| videostreamingplatform | videostreamingplatform | videostreamingplatform |
-| analytics | videostreamingplatform-analytics | analytics |
-| recommendations | videostreamingplatform-recommendations | recommendations |
-| infra | videostreamingplatform-infra | infra |
+## ArgoCD Applications
+
+| App | Source | Path | Target Namespace |
+|-----|--------|------|-----------------|
+| videostreamingplatform | videostreamingplatform | `k8s/local` | videostreamingplatform |
+| infra | videostreamingplatform-infra | `.` (root manifests) | infra |
+| analytics | videostreamingplatform-infra | `charts/analytics` (Helm) | analytics |
+| recommendations | videostreamingplatform-infra | `charts/recommendations` (Helm) | recommendations |
+
+Each data-plane Application uses `spec.source.helm.valueFiles: [values.yaml, values-aws.yaml]`.
+Drop `values-aws.yaml` (or omit the `helm` block) to render the chart with
+plain defaults against Docker Compose / Kind.
+
+The service repos (`videostreamingplatform-analytics`,
+`videostreamingplatform-recommendations`) own code and CI only — no K8s
+manifests. CI builds and publishes container images; Helm charts here
+reference them by tag.
 
 ## Networks & RBAC
 
-- All app namespaces can access Kafka (port 9092) in `infra` namespace
-- Only `recommendations` namespace can access pgvector (port 5432) in `infra` namespace
-- Each namespace has its own ServiceAccount
+- All app namespaces can access Kafka (port 9092) in `infra` namespace (local only)
+- Only `recommendations` namespace accesses pgvector (port 5432) in `infra` namespace (local only)
+- Each namespace has its own ServiceAccount; AWS overlays annotate them with IRSA role ARNs

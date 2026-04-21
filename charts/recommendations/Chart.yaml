@@ -1,0 +1,6 @@
+apiVersion: v2
+name: recommendations
+description: Recommendation API — LLM-based ranking over pgvector embeddings, fed by video + watch signals.
+type: application
+version: 0.1.0
+appVersion: "1.0"

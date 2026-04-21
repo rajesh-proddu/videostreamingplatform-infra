@@ -1,0 +1,51 @@
+namespace: recommendations
+
+serviceAccount:
+  name: recommendations-sa
+  # IRSA role ARN — set in values-aws.yaml only. Empty means no annotation.
+  roleArn: ""
+
+labels:
+  app.kubernetes.io/part-of: videostreamingplatform
+  app.kubernetes.io/component: recommendations
+
+image:
+  repository: ghcr.io/rajesh-proddu/videostreamingplatform-recommendations/recommendations
+  tag: latest
+  pullPolicy: IfNotPresent
+
+# Local defaults — Ollama + in-cluster pgvector, no Kafka auth.
+config:
+  API_PORT: "8000"
+  MAX_RECOMMENDATIONS: "10"
+  LLM_PROVIDER: ollama
+  ELASTICSEARCH_URL: http://elasticsearch.videostreamingplatform.svc.cluster.local:9200
+
+deployment:
+  replicas: 2
+  port: 8000
+  resources:
+    requests:
+      memory: 256Mi
+      cpu: 200m
+    limits:
+      memory: 512Mi
+      cpu: 1000m
+  readinessProbe:
+    path: /ready
+    initialDelaySeconds: 10
+    periodSeconds: 5
+  livenessProbe:
+    path: /health
+    initialDelaySeconds: 15
+    periodSeconds: 10
+
+service:
+  port: 8000
+
+hpa:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 6
+  cpuUtilization: 60
+  memoryUtilization: 80

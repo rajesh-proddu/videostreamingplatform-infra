@@ -1,0 +1,36 @@
+{{- if .Values.watchHistoryConsumer.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: watch-history-consumer
+  namespace: {{ .Values.namespace }}
+  labels:
+    app: watch-history-consumer
+    {{- toYaml .Values.labels | nindent 4 }}
+spec:
+  replicas: {{ .Values.watchHistoryConsumer.replicas }}
+  selector:
+    matchLabels:
+      app: watch-history-consumer
+  template:
+    metadata:
+      labels:
+        app: watch-history-consumer
+        {{- toYaml .Values.labels | nindent 8 }}
+    spec:
+      serviceAccountName: {{ .Values.serviceAccount.name }}
+      containers:
+        - name: consumer
+          image: {{ .Values.image.registry }}/{{ .Values.watchHistoryConsumer.image }}:{{ .Values.image.tag }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          envFrom:
+            - configMapRef:
+                name: analytics-env
+          env:
+            {{- range $k, $v := .Values.watchHistoryConsumer.extraEnv }}
+            - name: {{ $k }}
+              value: {{ $v | quote }}
+            {{- end }}
+          resources:
+            {{- toYaml .Values.watchHistoryConsumer.resources | nindent 12 }}
+{{- end }}

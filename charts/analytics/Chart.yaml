@@ -1,0 +1,6 @@
+apiVersion: v2
+name: analytics
+description: Stream processors (video + watch events), Iceberg catalog admin, and Glue + S3 warehouse wiring for the videostreamingplatform data plane.
+type: application
+version: 0.1.0
+appVersion: "1.0"

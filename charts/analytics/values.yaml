@@ -1,0 +1,82 @@
+namespace: analytics
+
+serviceAccount:
+  name: analytics-sa
+  # IRSA role ARN — set in values-aws.yaml only. Empty means no annotation.
+  roleArn: ""
+
+labels:
+  app.kubernetes.io/part-of: videostreamingplatform
+  app.kubernetes.io/component: analytics
+
+image:
+  registry: ghcr.io/rajesh-proddu/videostreamingplatform-analytics
+  tag: latest
+  pullPolicy: IfNotPresent
+
+# Common env injected into every workload via the analytics-env ConfigMap.
+# Local defaults target Docker Compose / Kind (plaintext Kafka, in-cluster ES).
+env:
+  AWS_REGION: us-east-1
+  ELASTICSEARCH_URL: http://elasticsearch.videostreamingplatform.svc.cluster.local:9200
+  KAFKA_SECURITY_PROTOCOL: PLAINTEXT
+  KAFKA_SASL_MECHANISM: ""
+  KAFKA_BROKERS: kafka.infra.svc.cluster.local:9092
+  ICEBERG_CATALOG_NAME: glue
+  ICEBERG_CATALOG_TYPE: glue
+  ICEBERG_GLUE_DATABASE: analytics
+  ICEBERG_WAREHOUSE: s3://videostreamingplatform-iceberg-warehouse-dev/
+  GLUE_SCHEMA_REGISTRY_NAME: videostreamingplatform-dev
+
+kafkaEsConsumer:
+  enabled: true
+  replicas: 1
+  image: kafka-es-consumer
+  extraEnv:
+    KAFKA_VIDEO_TOPIC: video-events
+    KAFKA_GROUP_ID: kafka-es-consumer
+    ES_VIDEO_INDEX: videos
+  resources:
+    requests:
+      memory: 128Mi
+      cpu: 100m
+    limits:
+      memory: 256Mi
+      cpu: 500m
+
+watchHistoryConsumer:
+  enabled: true
+  replicas: 1
+  image: watch-history-consumer
+  extraEnv:
+    KAFKA_WATCH_TOPIC: watch-events
+    KAFKA_GROUP_ID: watch-history-consumer
+    ICEBERG_TABLE: analytics.watch_history
+  resources:
+    requests:
+      memory: 256Mi
+      cpu: 100m
+    limits:
+      memory: 512Mi
+      cpu: 250m
+
+catalogAdmin:
+  image: catalog-admin
+  init:
+    enabled: true
+    args: [create-tables]
+  compaction:
+    enabled: true
+    schedule: "0 3 * * 0"
+    args: [compact, analytics.watch_history]
+    resources:
+      requests:
+        memory: 512Mi
+        cpu: 250m
+      limits:
+        memory: 1Gi
+        cpu: 500m
+  expireSnapshots:
+    enabled: true
+    schedule: "0 4 * * *"
+    args: [expire-snapshots, analytics.watch_history]

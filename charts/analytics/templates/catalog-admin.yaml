@@ -1,0 +1,77 @@
+{{- if .Values.catalogAdmin.init.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: catalog-init
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- toYaml .Values.labels | nindent 4 }}
+spec:
+  ttlSecondsAfterFinished: 600
+  template:
+    spec:
+      serviceAccountName: {{ .Values.serviceAccount.name }}
+      restartPolicy: OnFailure
+      containers:
+        - name: catalog-admin
+          image: {{ .Values.image.registry }}/{{ .Values.catalogAdmin.image }}:{{ .Values.image.tag }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args: {{ toYaml .Values.catalogAdmin.init.args | nindent 12 }}
+          envFrom:
+            - configMapRef:
+                name: analytics-env
+{{- end }}
+{{- if .Values.catalogAdmin.compaction.enabled }}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: iceberg-compaction
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- toYaml .Values.labels | nindent 4 }}
+spec:
+  schedule: {{ .Values.catalogAdmin.compaction.schedule | quote }}
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          serviceAccountName: {{ .Values.serviceAccount.name }}
+          restartPolicy: OnFailure
+          containers:
+            - name: catalog-admin
+              image: {{ .Values.image.registry }}/{{ .Values.catalogAdmin.image }}:{{ .Values.image.tag }}
+              imagePullPolicy: {{ .Values.image.pullPolicy }}
+              args: {{ toYaml .Values.catalogAdmin.compaction.args | nindent 16 }}
+              envFrom:
+                - configMapRef:
+                    name: analytics-env
+              resources:
+                {{- toYaml .Values.catalogAdmin.compaction.resources | nindent 16 }}
+{{- end }}
+{{- if .Values.catalogAdmin.expireSnapshots.enabled }}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: iceberg-expire-snapshots
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- toYaml .Values.labels | nindent 4 }}
+spec:
+  schedule: {{ .Values.catalogAdmin.expireSnapshots.schedule | quote }}
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          serviceAccountName: {{ .Values.serviceAccount.name }}
+          restartPolicy: OnFailure
+          containers:
+            - name: catalog-admin
+              image: {{ .Values.image.registry }}/{{ .Values.catalogAdmin.image }}:{{ .Values.image.tag }}
+              imagePullPolicy: {{ .Values.image.pullPolicy }}
+              args: {{ toYaml .Values.catalogAdmin.expireSnapshots.args | nindent 16 }}
+              envFrom:
+                - configMapRef:
+                    name: analytics-env
+{{- end }}

@@ -71,18 +71,49 @@ The `CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk` is hardcoded identically in both docker
 | Project | Source Repos | Target Namespaces |
 |---------|-------------|-------------------|
 | `platform` | videostreamingplatform, videostreamingplatform-infra | `videostreamingplatform`, `infra` |
-| `data` | videostreamingplatform-analytics, videostreamingplatform-recommendations | `analytics`, `recommendations` |
+| `data` | videostreamingplatform-infra, videostreamingplatform-analytics, videostreamingplatform-recommendations | `analytics`, `recommendations` |
 
 ### Applications
 
-| App | Source Repo | Source Path | Namespace |
-|-----|------------|-------------|-----------|
-| `videostreamingplatform` | videostreamingplatform | `k8s/local` | videostreamingplatform |
-| `infra` | videostreamingplatform-infra | `k8s` (root) | infra |
-| `analytics` | videostreamingplatform-analytics | `k8s` | analytics |
-| `recommendations` | videostreamingplatform-recommendations | `k8s` | recommendations |
+| App | Source Repo | Source Path | Render | Namespace |
+|-----|------------|-------------|--------|-----------|
+| `videostreamingplatform` | videostreamingplatform | `k8s/local` | raw manifests | videostreamingplatform |
+| `infra` | videostreamingplatform-infra | multi-source: `kafka`, `pgvector`, `schema-registry`, `networking`, `rbac` | raw manifests | infra |
+| `analytics` | videostreamingplatform-infra | `charts/analytics` | Helm (`values.yaml` + `values-aws.yaml`) | analytics |
+| `recommendations` | videostreamingplatform-infra | `charts/recommendations` | Helm (`values.yaml` + `values-aws.yaml`) | recommendations |
 
 ArgoCD watches `main` branch on all repos. Changes merged to `main` deploy automatically.
+
+This repo is the GitOps source of truth: analytics/recommendations Helm charts
+live here, not in the service repos. The service repos own code and CI
+(container image builds) only; Helm charts reference published image tags.
+
+## Helm Charts
+
+`charts/analytics/` and `charts/recommendations/` each contain:
+
+- `Chart.yaml`
+- `values.yaml` — local defaults (plaintext Kafka, Ollama LLM, in-cluster pgvector)
+- `values-aws.yaml` — AWS overlay (MSK IAM, Bedrock, Aurora pgvector, IRSA role ARN annotation)
+- `templates/` — ServiceAccount, ConfigMap, Deployments/Job/CronJob as applicable
+
+AWS overlay values contain placeholder strings — `BOOTSTRAP_BROKERS_PLACEHOLDER`,
+`ROLE_ARN_PLACEHOLDER`, `PG_ENDPOINT_PLACEHOLDER`, `PG_SECRET_ARN_PLACEHOLDER` —
+that are substituted from `terraform/aws` outputs via external-secrets-operator
+or a bootstrap PR before first sync.
+
+## Terraform (AWS)
+
+`terraform/aws/` provisions data-plane AWS resources and reads VPC + EKS
+OIDC provider via remote state from the platform repo:
+
+| File | Resources |
+|------|-----------|
+| `msk.tf` | MSK Serverless cluster (SASL/IAM) |
+| `pgvector.tf` | Aurora Postgres Serverless v2 + Secrets Manager password |
+| `glue.tf` | Glue catalog database, Schema Registry, Iceberg S3 bucket |
+| `iam.tf` | IRSA roles for `analytics-sa` and `recommendations-sa` |
+| `outputs.tf` | Bootstrap brokers, endpoints, role ARNs, secret ARN |
 
 ## CI
 

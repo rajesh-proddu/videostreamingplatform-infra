@@ -6,9 +6,16 @@ metadata:
 spec:
   project: data
   source:
-    repoURL: https://github.com/rajesh-proddu/videostreamingplatform-analytics.git
+    repoURL: https://github.com/rajesh-proddu/videostreamingplatform-infra.git
     targetRevision: main
-    path: k8s
+    path: charts/analytics
+    # AWS deploy: MSK IAM + Glue + Iceberg S3 + IRSA. Drop `valueFiles`
+    # (or point at a local overlay) to run the chart with plain defaults
+    # against Docker Compose / Kind.
+    helm:
+      valueFiles:
+        - values.yaml
+        - values-aws.yaml
   destination:
     server: https://kubernetes.default.svc
     namespace: analytics
