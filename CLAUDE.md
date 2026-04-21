@@ -97,10 +97,32 @@ live here, not in the service repos. The service repos own code and CI
 - `values-aws.yaml` — AWS overlay (MSK IAM, Bedrock, Aurora pgvector, IRSA role ARN annotation)
 - `templates/` — ServiceAccount, ConfigMap, Deployments/Job/CronJob as applicable
 
-AWS overlay values contain placeholder strings — `BOOTSTRAP_BROKERS_PLACEHOLDER`,
-`ROLE_ARN_PLACEHOLDER`, `PG_ENDPOINT_PLACEHOLDER`, `PG_SECRET_ARN_PLACEHOLDER` —
-that are substituted from `terraform/aws` outputs via external-secrets-operator
-or a bootstrap PR before first sync.
+Dynamic values (MSK brokers, OpenSearch + Aurora endpoints, pgvector secret
+ARN, Iceberg warehouse, Glue registry, Athena workgroup + results bucket)
+are *not* set in values-aws.yaml. Terraform writes them to AWS SSM Parameter
+Store at `/videostreamingplatform/<env>/*` (`terraform/aws/ssm.tf`); the
+`external-secrets-operator` app and its `ClusterSecretStore` (via the
+`charts/external-secrets-config` chart) materialize them into per-namespace
+Secrets mounted via `envFrom`. The only remaining bootstrap value is the
+ServiceAccount IRSA role ARN in each chart's `values-aws.yaml` — SA
+annotations can't be rendered by ESO, and the role name is deterministic
+from terraform.
+
+## External Secrets Operator
+
+Two ArgoCD apps wire up the secret-substitution pipeline:
+
+| App | Sync-wave | Source | Purpose |
+|-----|-----------|--------|---------|
+| `external-secrets-operator` | -10 | upstream `charts.external-secrets.io/external-secrets` | Installs ESO + CRDs |
+| `external-secrets-config` | -5 | `charts/external-secrets-config` | ClusterSecretStore `aws-ssm` pointing at SSM Parameter Store |
+
+ESO runs as `external-secrets:external-secrets` ServiceAccount with an
+IRSA role (`terraform/aws/eso.tf`) scoped to read the
+`/videostreamingplatform/${env}/*` SSM prefix plus the pgvector
+Secrets Manager secret. Each consuming chart declares an `ExternalSecret`
+CR (e.g. `charts/analytics/templates/externalsecret.yaml`) with
+`sync-wave: -1` so the Secret exists before workload pods start.
 
 ## Terraform (AWS)
 

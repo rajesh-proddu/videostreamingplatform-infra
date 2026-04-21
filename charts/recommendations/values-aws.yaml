@@ -1,32 +1,28 @@
 # AWS overlay — EKS + Bedrock (Claude 3.5 Sonnet + Titan Embed v2) + Aurora
-# Postgres Serverless v2 + MSK Serverless (IAM auth).
-# Placeholders are substituted from terraform outputs via external-secrets-operator
-# or a bootstrap PR prior to first sync.
+# Postgres Serverless v2 + MSK Serverless (IAM auth) + OpenSearch.
+# Dynamic endpoints (brokers, OpenSearch URL, pgvector endpoint/secret ARN)
+# come from AWS SSM Parameter Store via external-secrets-operator — no
+# placeholders left to substitute by hand.
+#
+# The ServiceAccount IRSA role ARN stays here because SA annotations can't
+# be rendered by ESO. It's deterministic from terraform
+# (`terraform output recommendations_irsa_role_arn`): commit the value once.
 
 serviceAccount:
-  # terraform output recommendations_irsa_role_arn
+  # arn:aws:iam::<account_id>:role/videostreamingplatform-recommendations-<env>
   roleArn: ROLE_ARN_PLACEHOLDER
 
 config:
+  ELASTICSEARCH_AWS_AUTH: "true"
+
+configDynamic:
   LLM_PROVIDER: bedrock
   AWS_REGION: us-east-1
   BEDROCK_MODEL_ID: anthropic.claude-3-5-sonnet-20241022-v2:0
   BEDROCK_EMBEDDING_MODEL_ID: amazon.titan-embed-text-v2:0
-
-  # pgvector now lives on Aurora Postgres Serverless v2. The service reads the
-  # secret itself at startup using its IRSA-bound IAM role.
-  # terraform output pgvector_endpoint / pgvector_secret_arn
-  PGVECTOR_ENDPOINT: PG_ENDPOINT_PLACEHOLDER
-  PGVECTOR_DATABASE: recommendations
-  PGVECTOR_SECRET_ARN: PG_SECRET_ARN_PLACEHOLDER
-
-  # Kafka (MSK Serverless, IAM auth) — used for future signal enrichment.
   KAFKA_SECURITY_PROTOCOL: SASL_SSL
   KAFKA_SASL_MECHANISM: AWS_MSK_IAM
-  # terraform output msk_bootstrap_brokers_sasl_iam
-  KAFKA_BROKERS: BOOTSTRAP_BROKERS_PLACEHOLDER
 
-  # OpenSearch Service — candidate retrieval for the LLM re-ranker.
-  # terraform output opensearch_endpoint
-  ELASTICSEARCH_URL: OPENSEARCH_ENDPOINT_PLACEHOLDER
-  ELASTICSEARCH_AWS_AUTH: "true"
+externalSecret:
+  enabled: true
+  ssmPathPrefix: /videostreamingplatform/prod

@@ -26,6 +26,10 @@ spec:
           envFrom:
             - configMapRef:
                 name: analytics-env
+            {{- if .Values.externalSecret.enabled }}
+            - secretRef:
+                name: {{ .Values.externalSecret.secretName }}
+            {{- end }}
           env:
             {{- range $k, $v := .Values.watchHistoryConsumer.extraEnv }}
             - name: {{ $k }}

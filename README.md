@@ -52,11 +52,17 @@ make down         # Stop all services
    terraform init
    terraform apply
    ```
-2. Substitute terraform outputs into `charts/*/values-aws.yaml`
-   (`BOOTSTRAP_BROKERS_PLACEHOLDER`, `ROLE_ARN_PLACEHOLDER`,
-   `PG_ENDPOINT_PLACEHOLDER`, `PG_SECRET_ARN_PLACEHOLDER`,
-   `OPENSEARCH_ENDPOINT_PLACEHOLDER`) via external-secrets-operator
-   or a bootstrap PR.
+2. Terraform writes every dynamic value (MSK brokers, OpenSearch + Aurora
+   endpoints, Iceberg warehouse, Glue registry, Athena workgroup + results
+   bucket, pgvector secret ARN) into AWS SSM Parameter Store at
+   `/videostreamingplatform/<env>/*`. The `external-secrets-operator`
+   ArgoCD app (sync-wave -10) and its `ClusterSecretStore` (wave -5) read
+   those parameters and materialize them into per-namespace Secrets that
+   the analytics and recommendations Deployments mount via `envFrom`.
+   The only value that still needs a manual commit is the ServiceAccount
+   IRSA role ARN in each chart's `values-aws.yaml` (SA annotations can't
+   be rendered by ESO; the role name is deterministic from terraform so
+   it's a one-time value per environment).
 3. ArgoCD auto-syncs `analytics` and `recommendations` from the Helm charts.
 
 Terraform remote state reads VPC + EKS OIDC provider from the platform

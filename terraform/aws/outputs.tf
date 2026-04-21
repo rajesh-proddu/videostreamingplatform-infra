@@ -87,3 +87,13 @@ output "athena_results_bucket" {
   description = "S3 bucket for Athena query results"
   value       = aws_s3_bucket.athena_results.bucket
 }
+
+output "external_secrets_irsa_role_arn" {
+  description = "IRSA role ARN for the external-secrets-operator SA"
+  value       = aws_iam_role.external_secrets.arn
+}
+
+output "ssm_parameter_prefix" {
+  description = "SSM Parameter Store path prefix for all dynamic values"
+  value       = local.ssm_prefix
+}

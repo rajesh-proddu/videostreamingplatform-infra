@@ -14,19 +14,34 @@ image:
   tag: latest
   pullPolicy: IfNotPresent
 
-# Common env injected into every workload via the analytics-env ConfigMap.
-# Local defaults target Docker Compose / Kind (plaintext Kafka, in-cluster ES).
+# Static env — identical across environments. Always set by the ConfigMap.
 env:
   AWS_REGION: us-east-1
-  ELASTICSEARCH_URL: http://elasticsearch.videostreamingplatform.svc.cluster.local:9200
-  KAFKA_SECURITY_PROTOCOL: PLAINTEXT
-  KAFKA_SASL_MECHANISM: ""
-  KAFKA_BROKERS: kafka.infra.svc.cluster.local:9092
   ICEBERG_CATALOG_NAME: glue
   ICEBERG_CATALOG_TYPE: glue
   ICEBERG_GLUE_DATABASE: analytics
-  ICEBERG_WAREHOUSE: s3://videostreamingplatform-iceberg-warehouse-dev/
+  ELASTICSEARCH_AWS_AUTH: "false"
+
+# Dynamic env — local defaults. When `externalSecret.enabled` is true these
+# entries are dropped from the ConfigMap and the ExternalSecret provides
+# equivalent keys from AWS SSM Parameter Store (which win via envFrom order).
+envDynamic:
+  KAFKA_SECURITY_PROTOCOL: PLAINTEXT
+  KAFKA_SASL_MECHANISM: ""
+  KAFKA_BROKERS: kafka.infra.svc.cluster.local:9092
+  ELASTICSEARCH_URL: http://elasticsearch.videostreamingplatform.svc.cluster.local:9200
+  ICEBERG_WAREHOUSE: s3://iceberg-warehouse/
   GLUE_SCHEMA_REGISTRY_NAME: videostreamingplatform-dev
+  ATHENA_WORKGROUP: ""
+  ATHENA_RESULTS_BUCKET: ""
+
+externalSecret:
+  enabled: false
+  secretName: analytics-env-dynamic
+  clusterSecretStore: aws-ssm
+  refreshInterval: 5m
+  # Path prefix in AWS SSM Parameter Store. Set per-env in values-aws.yaml.
+  ssmPathPrefix: /videostreamingplatform/dev
 
 kafkaEsConsumer:
   enabled: true
