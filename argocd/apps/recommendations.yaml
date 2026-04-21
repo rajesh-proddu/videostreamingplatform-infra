@@ -7,7 +7,7 @@ spec:
   project: platform
   source:
     repoURL: https://github.com/rajesh-proddu/videostreamingplatform-infra.git
-    targetRevision: main
+    targetRevision: master
     path: charts/recommendations
     # AWS deploy: Bedrock + Aurora pgvector + IRSA. Drop `valueFiles`
     # (or point at a local overlay) to run with Ollama + in-cluster

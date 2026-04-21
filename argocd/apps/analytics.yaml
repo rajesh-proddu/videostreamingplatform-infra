@@ -7,7 +7,7 @@ spec:
   project: platform
   source:
     repoURL: https://github.com/rajesh-proddu/videostreamingplatform-infra.git
-    targetRevision: main
+    targetRevision: master
     path: charts/analytics
     # AWS deploy: MSK IAM + Glue + Iceberg S3 + IRSA. Drop `valueFiles`
     # (or point at a local overlay) to run the chart with plain defaults

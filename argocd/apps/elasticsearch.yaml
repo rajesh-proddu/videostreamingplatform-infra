@@ -7,7 +7,7 @@ spec:
   project: platform
   source:
     repoURL: https://github.com/rajesh-proddu/videostreamingplatform-infra.git
-    targetRevision: main
+    targetRevision: master
     path: elasticsearch
   destination:
     server: https://kubernetes.default.svc

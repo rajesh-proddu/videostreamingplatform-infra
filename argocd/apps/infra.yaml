@@ -7,19 +7,19 @@ spec:
   project: platform
   sources:
     - repoURL: https://github.com/rajesh-proddu/videostreamingplatform-infra.git
-      targetRevision: main
+      targetRevision: master
       path: kafka
     - repoURL: https://github.com/rajesh-proddu/videostreamingplatform-infra.git
-      targetRevision: main
+      targetRevision: master
       path: schema-registry
     - repoURL: https://github.com/rajesh-proddu/videostreamingplatform-infra.git
-      targetRevision: main
+      targetRevision: master
       path: pgvector
     - repoURL: https://github.com/rajesh-proddu/videostreamingplatform-infra.git
-      targetRevision: main
+      targetRevision: master
       path: networking
     - repoURL: https://github.com/rajesh-proddu/videostreamingplatform-infra.git
-      targetRevision: main
+      targetRevision: master
       path: rbac
   destination:
     server: https://kubernetes.default.svc
