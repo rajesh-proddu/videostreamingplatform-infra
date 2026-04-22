@@ -1,0 +1,121 @@
+name: Bootstrap ArgoCD
+
+# Installs ArgoCD into a freshly-provisioned EKS cluster via the upstream
+# Helm chart (pinned version), then applies the AppProjects + Applications
+# from this repo's argocd/ directory and waits for each app to reach
+# Synced + Healthy.
+#
+# Prerequisite: the EKS cluster must already exist (via the platform
+# Terraform workflow in the videostreamingplatform repo).
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        type: choice
+        description: 'Target environment'
+        options: [dev, prod]
+        required: true
+      cluster_name:
+        description: 'EKS cluster name (default: videostreamingplatform-<env>)'
+        required: false
+        default: ''
+      argocd_chart_version:
+        description: 'ArgoCD Helm chart version (argo/argo-cd)'
+        required: false
+        default: '7.7.10'
+
+env:
+  AWS_REGION: us-east-1
+
+jobs:
+  bootstrap:
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ github.event.inputs.environment }}
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Resolve cluster name
+        id: cluster
+        run: |
+          name="${{ github.event.inputs.cluster_name }}"
+          if [ -z "$name" ]; then
+            name="videostreamingplatform-${{ github.event.inputs.environment }}"
+          fi
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+          echo "Using cluster: $name"
+
+      - name: Update kubeconfig
+        run: |
+          aws eks update-kubeconfig \
+            --name "${{ steps.cluster.outputs.name }}" \
+            --region ${{ env.AWS_REGION }}
+
+      - name: Install ArgoCD via Helm (pinned chart version)
+        run: |
+          helm repo add argo https://argoproj.github.io/argo-helm
+          helm repo update
+          kubectl create namespace argocd --dry-run=client -o yaml | kubectl apply -f -
+          helm upgrade --install argocd argo/argo-cd \
+            --namespace argocd \
+            --version "${{ github.event.inputs.argocd_chart_version }}" \
+            --wait --timeout 10m
+
+      - name: Apply AppProjects + Applications
+        run: |
+          kubectl apply -f argocd/appprojects/
+          kubectl apply -f argocd/apps/
+
+      - name: Wait for each Application to reach Synced + Healthy
+        run: |
+          # Give ArgoCD a moment to register the new Application objects and
+          # populate their status fields before we start polling.
+          sleep 15
+          apps=$(kubectl get applications -n argocd -o jsonpath='{.items[*].metadata.name}')
+          if [ -z "$apps" ]; then
+            echo "no applications found in argocd namespace"
+            exit 1
+          fi
+
+          exit_code=0
+          for app in $apps; do
+            echo "::group::waiting for $app (Synced + Healthy, 10m cap)"
+            if ! kubectl wait -n argocd "application/$app" \
+                --for=jsonpath='{.status.sync.status}'=Synced --timeout=600s; then
+              echo "WARN: $app did not reach Synced"
+              exit_code=1
+            fi
+            if ! kubectl wait -n argocd "application/$app" \
+                --for=jsonpath='{.status.health.status}'=Healthy --timeout=600s; then
+              echo "WARN: $app did not reach Healthy"
+              exit_code=1
+            fi
+            echo "::endgroup::"
+          done
+
+          echo "=== Final Application status ==="
+          kubectl get applications -n argocd -o \
+            custom-columns='NAME:.metadata.name,SYNC:.status.sync.status,HEALTH:.status.health.status'
+
+          exit $exit_code
+
+      - name: Surface ArgoCD admin password
+        if: always()
+        run: |
+          echo "::group::ArgoCD admin password (from argocd-initial-admin-secret)"
+          kubectl -n argocd get secret argocd-initial-admin-secret \
+            -o jsonpath='{.data.password}' 2>/dev/null | base64 -d || \
+            echo "(secret not present — may have been rotated already)"
+          echo
+          echo "::endgroup::"

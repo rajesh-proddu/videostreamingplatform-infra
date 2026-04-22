@@ -23,7 +23,27 @@ jobs:
             -not -path './.github/*' \
             -not -path './docker-compose*' \
             -not -path './argocd/*' \
+            -not -path './charts/*' \
             | xargs kubeconform -strict -summary
+
+      - name: Install Helm
+        uses: azure/setup-helm@v4
+
+      - name: Validate rendered Helm charts
+        run: |
+          # Helm templates contain {{ .Values }} and aren't valid YAML until
+          # rendered. Render each chart with default values and the AWS overlay,
+          # then kubeconform the output.
+          set -euo pipefail
+          for chart in charts/*/; do
+            chart_name=$(basename "$chart")
+            echo "--- $chart_name (default values) ---"
+            helm template "$chart_name" "$chart" | kubeconform -strict -summary
+            if [ -f "$chart/values-aws.yaml" ]; then
+              echo "--- $chart_name (values-aws) ---"
+              helm template "$chart_name" "$chart" -f "$chart/values-aws.yaml" | kubeconform -strict -summary
+            fi
+          done
 
       - name: Validate ArgoCD manifests
         run: |
