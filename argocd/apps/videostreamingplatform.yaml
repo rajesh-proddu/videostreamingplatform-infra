@@ -8,7 +8,7 @@ spec:
   source:
     repoURL: https://github.com/rajesh-proddu/videostreamingplatform.git
     targetRevision: main
-    path: k8s/local
+    path: k8s/aws/manifests
   destination:
     server: https://kubernetes.default.svc
     namespace: videostreamingplatform

@@ -122,7 +122,7 @@ endpoints — is static cluster-internal DNS, the same on Kind and EKS.
 `terraform/aws/` provisions only the AWS-managed services that have no
 in-cluster equivalent — Glue catalog, Iceberg S3 warehouse, Athena, and
 the two IRSA roles. Reads VPC + EKS OIDC provider via remote state from
-the platform repo (`key = "dev/terraform.tfstate"` in the same state
+the platform repo (`key = "eks/terraform.tfstate"` in the same state
 bucket).
 
 | File | Resources |

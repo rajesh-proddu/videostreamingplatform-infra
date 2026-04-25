@@ -8,6 +8,13 @@ metadata:
 apiVersion: v1
 kind: Namespace
 metadata:
+  name: videostreamingplatform
+  labels:
+    app.kubernetes.io/part-of: videostreamingplatform
+---
+apiVersion: v1
+kind: Namespace
+metadata:
   name: analytics
   labels:
     app.kubernetes.io/part-of: videostreamingplatform

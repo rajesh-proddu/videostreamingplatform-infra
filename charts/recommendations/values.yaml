@@ -25,8 +25,7 @@ configDynamic:
   LLM_PROVIDER: ollama
   ELASTICSEARCH_URL: http://elasticsearch.videostreamingplatform.svc.cluster.local:9200
   KAFKA_BROKERS: kafka.infra.svc.cluster.local:9092
-  PGVECTOR_ENDPOINT: pgvector.infra.svc.cluster.local
-  PGVECTOR_DATABASE: recommendations
+  PGVECTOR_URL: postgresql://recouser:recopass@pgvector.infra.svc.cluster.local:5432/recommendations
 
 deployment:
   replicas: 2

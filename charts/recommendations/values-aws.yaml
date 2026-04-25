@@ -13,5 +13,4 @@ configDynamic:
   BEDROCK_MODEL_ID: anthropic.claude-3-5-sonnet-20241022-v2:0
   BEDROCK_EMBEDDING_MODEL_ID: amazon.titan-embed-text-v2:0
   KAFKA_BROKERS: kafka.infra.svc.cluster.local:9092
-  PGVECTOR_ENDPOINT: pgvector.infra.svc.cluster.local
-  PGVECTOR_DATABASE: recommendations
+  PGVECTOR_URL: postgresql://recouser:recopass@pgvector.infra.svc.cluster.local:5432/recommendations
