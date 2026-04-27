@@ -31,6 +31,8 @@
 #   ./scripts/bootstrap-aws.sh --only-deploy         # phase 3 only (direct)
 #   ./scripts/bootstrap-aws.sh --only-deploy --argocd   # phase 3 only (ArgoCD)
 #   ./scripts/bootstrap-aws.sh --skip-state          # phases 2+3
+#   ./scripts/bootstrap-aws.sh --skip-github-secrets # don't push gh secrets
+#   ./scripts/bootstrap-aws.sh --only-github-secrets # only push gh secrets
 #   ./scripts/bootstrap-aws.sh --yes                 # non-interactive
 #
 # Env overrides:
@@ -41,6 +43,8 @@
 #   ARGOCD_CHART_VERSION       (default: 7.7.10 — argo/argo-cd Helm chart)
 #   ENVIRONMENT                (default: dev — used to derive cluster name)
 #   DEPLOY_MODE                (default: direct — set to "argocd" to force)
+#   MAIN_REPO_SLUG             (default: rajesh-proddu/videostreamingplatform)
+#   INFRA_REPO_SLUG            (default: rajesh-proddu/videostreamingplatform-infra)
 #
 # RDS password:
 #   The platform module sets `manage_master_user_password = true`, so AWS RDS
@@ -70,10 +74,13 @@ ARGOCD_CHART_VERSION="${ARGOCD_CHART_VERSION:-7.7.10}"
 ENVIRONMENT="${ENVIRONMENT:-dev}"
 CLUSTER_NAME="${CLUSTER_NAME:-videostreamingplatform-${ENVIRONMENT}}"
 DEPLOY_MODE="${DEPLOY_MODE:-direct}"
+MAIN_REPO_SLUG="${MAIN_REPO_SLUG:-rajesh-proddu/videostreamingplatform}"
+INFRA_REPO_SLUG="${INFRA_REPO_SLUG:-rajesh-proddu/videostreamingplatform-infra}"
 
 YES=0
 PHASE_STATE=1
 PHASE_TERRAFORM=1
+PHASE_GITHUB_SECRETS=1
 PHASE_DEPLOY=1
 
 # ----------------------------------------------------------------------------
@@ -96,19 +103,21 @@ require_cmd() {
 parse_args() {
   while [[ $# -gt 0 ]]; do
     case "$1" in
-      --yes|-y)          YES=1 ;;
-      --argocd)          DEPLOY_MODE="argocd" ;;
-      --direct)          DEPLOY_MODE="direct" ;;
-      --only-state)      PHASE_TERRAFORM=0; PHASE_DEPLOY=0 ;;
-      --only-terraform)  PHASE_STATE=0; PHASE_DEPLOY=0 ;;
-      --only-deploy)     PHASE_STATE=0; PHASE_TERRAFORM=0 ;;
-      --only-argocd)     PHASE_STATE=0; PHASE_TERRAFORM=0; DEPLOY_MODE="argocd" ;;
-      --skip-state)      PHASE_STATE=0 ;;
-      --skip-terraform)  PHASE_TERRAFORM=0 ;;
-      --skip-deploy)     PHASE_DEPLOY=0 ;;
-      --skip-argocd)     PHASE_DEPLOY=0 ;;
-      -h|--help)         sed -n '2,50p' "$0"; exit 0 ;;
-      *)                 die "unknown arg: $1" ;;
+      --yes|-y)                YES=1 ;;
+      --argocd)                DEPLOY_MODE="argocd" ;;
+      --direct)                DEPLOY_MODE="direct" ;;
+      --only-state)            PHASE_TERRAFORM=0; PHASE_GITHUB_SECRETS=0; PHASE_DEPLOY=0 ;;
+      --only-terraform)        PHASE_STATE=0; PHASE_GITHUB_SECRETS=0; PHASE_DEPLOY=0 ;;
+      --only-github-secrets)   PHASE_STATE=0; PHASE_TERRAFORM=0; PHASE_DEPLOY=0 ;;
+      --only-deploy)           PHASE_STATE=0; PHASE_TERRAFORM=0; PHASE_GITHUB_SECRETS=0 ;;
+      --only-argocd)           PHASE_STATE=0; PHASE_TERRAFORM=0; PHASE_GITHUB_SECRETS=0; DEPLOY_MODE="argocd" ;;
+      --skip-state)            PHASE_STATE=0 ;;
+      --skip-terraform)        PHASE_TERRAFORM=0 ;;
+      --skip-github-secrets)   PHASE_GITHUB_SECRETS=0 ;;
+      --skip-deploy)           PHASE_DEPLOY=0 ;;
+      --skip-argocd)           PHASE_DEPLOY=0 ;;
+      -h|--help)               sed -n '2,55p' "$0"; exit 0 ;;
+      *)                       die "unknown arg: $1" ;;
     esac
     shift
   done
@@ -182,6 +191,69 @@ phase_terraform() {
   ( cd "$PLATFORM_TF_DIR" && terraform output -raw rds_master_user_secret_arn 2>/dev/null ) || \
     warn "  (could not read rds_master_user_secret_arn — check platform outputs)"
   echo
+}
+
+# ----------------------------------------------------------------------------
+# Phase 2.5 — push terraform-derived values into GitHub Actions secrets
+#
+# The deploy workflows (videostreamingplatform/deploy-aws-k8s.yml,
+# videostreamingplatform-infra/deploy-platform.yml) read these via
+# ${{ secrets.* }} and would otherwise need manual `gh secret set` after
+# every fresh `terraform apply`. We always overwrite so a destroy/apply
+# cycle re-syncs values without stale leftovers.
+#
+# Best-effort: missing terraform output / no gh auth / repo not visible
+# warns and continues — the rest of bootstrap (including direct deploy)
+# still works without these.
+# ----------------------------------------------------------------------------
+gh_secret_set() {
+  local repo="$1" name="$2" value="$3"
+  if [[ -z "$value" ]]; then
+    warn "    skip $repo $name (empty value)"
+    return 0
+  fi
+  if gh -R "$repo" secret set "$name" --body "$value" >/dev/null 2>&1; then
+    log "    set  $repo  $name"
+  else
+    warn "    failed $repo $name (check 'gh auth status' and repo access)"
+  fi
+}
+
+tf_output() {
+  local dir="$1" name="$2"
+  ( cd "$dir" && terraform output -raw "$name" 2>/dev/null ) || echo ""
+}
+
+phase_github_secrets() {
+  log "phase 2.5: sync terraform outputs into GitHub Actions secrets"
+
+  if ! command -v gh >/dev/null 2>&1; then
+    warn "  gh not installed — skipping"
+    return 0
+  fi
+  if ! gh auth status >/dev/null 2>&1; then
+    warn "  gh not authenticated (run 'gh auth login') — skipping"
+    return 0
+  fi
+
+  # Platform module outputs → main repo (videostreamingplatform)
+  log "  → $MAIN_REPO_SLUG"
+  gh_secret_set "$MAIN_REPO_SLUG" S3_VIDEOS_BUCKET           "$(tf_output "$PLATFORM_TF_DIR" s3_videos_bucket)"
+  gh_secret_set "$MAIN_REPO_SLUG" REDIS_ENDPOINT             "$(tf_output "$PLATFORM_TF_DIR" redis_endpoint)"
+  gh_secret_set "$MAIN_REPO_SLUG" RDS_ENDPOINT               "$(tf_output "$PLATFORM_TF_DIR" rds_address)"
+  gh_secret_set "$MAIN_REPO_SLUG" RDS_MASTER_USER_SECRET_ARN "$(tf_output "$PLATFORM_TF_DIR" rds_master_user_secret_arn)"
+  gh_secret_set "$MAIN_REPO_SLUG" CDN_DISTRIBUTION_ID        "$(tf_output "$PLATFORM_TF_DIR" cloudfront_distribution_id)"
+  gh_secret_set "$MAIN_REPO_SLUG" IRSA_METADATA_ROLE_ARN     "$(tf_output "$PLATFORM_TF_DIR" metadata_service_irsa_role_arn)"
+  gh_secret_set "$MAIN_REPO_SLUG" IRSA_DATA_ROLE_ARN         "$(tf_output "$PLATFORM_TF_DIR" data_service_irsa_role_arn)"
+  # Static in-cluster endpoints — same on every account, but the workflow
+  # treats them as secrets so it can fail-fast if unset.
+  gh_secret_set "$MAIN_REPO_SLUG" KAFKA_BROKERS       "kafka.infra.svc.cluster.local:9092"
+  gh_secret_set "$MAIN_REPO_SLUG" OPENSEARCH_ENDPOINT "http://elasticsearch.videostreamingplatform.svc.cluster.local:9200"
+
+  # Infra module outputs → infra repo (videostreamingplatform-infra)
+  log "  → $INFRA_REPO_SLUG"
+  gh_secret_set "$INFRA_REPO_SLUG" ANALYTICS_IRSA_ROLE_ARN       "$(tf_output "$INFRA_TF_DIR" analytics_irsa_role_arn)"
+  gh_secret_set "$INFRA_REPO_SLUG" RECOMMENDATIONS_IRSA_ROLE_ARN "$(tf_output "$INFRA_TF_DIR" recommendations_irsa_role_arn)"
 }
 
 # ----------------------------------------------------------------------------
@@ -510,8 +582,9 @@ main() {
   require_cmd gh
 
   log "plan (deploy mode: $DEPLOY_MODE):"
-  [[ "$PHASE_STATE"     == 1 ]] && log "  1. ensure S3 state bucket + DynamoDB lock table"
-  [[ "$PHASE_TERRAFORM" == 1 ]] && log "  2. terraform apply -> platform + infra"
+  [[ "$PHASE_STATE"           == 1 ]] && log "  1. ensure S3 state bucket + DynamoDB lock table"
+  [[ "$PHASE_TERRAFORM"       == 1 ]] && log "  2. terraform apply -> platform + infra"
+  [[ "$PHASE_GITHUB_SECRETS"  == 1 ]] && log "  2.5. sync terraform outputs into GitHub Actions secrets"
   if [[ "$PHASE_DEPLOY" == 1 ]]; then
     if [[ "$DEPLOY_MODE" == "argocd" ]]; then
       log "  3. install ArgoCD + apply AppProjects/Applications"
@@ -521,9 +594,10 @@ main() {
   fi
   confirm "proceed?" || die "aborted"
 
-  [[ "$PHASE_STATE"     == 1 ]] && phase_state
-  [[ "$PHASE_TERRAFORM" == 1 ]] && phase_terraform
-  [[ "$PHASE_DEPLOY"    == 1 ]] && phase_deploy
+  [[ "$PHASE_STATE"           == 1 ]] && phase_state
+  [[ "$PHASE_TERRAFORM"       == 1 ]] && phase_terraform
+  [[ "$PHASE_GITHUB_SECRETS"  == 1 ]] && phase_github_secrets
+  [[ "$PHASE_DEPLOY"          == 1 ]] && phase_deploy
 
   log "done."
 }
