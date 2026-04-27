@@ -1,0 +1,143 @@
+name: Deploy platform infra (Kafka + pgvector + analytics + recommendations)
+
+# Direct kubectl/helm bootstrap of the in-cluster data plane and the
+# analytics + recommendations services, intended as a free-tier alternative
+# to the ArgoCD-driven path in bootstrap-argocd.yml.
+#
+# Differences from the ArgoCD path:
+#   - No ArgoCD install (saves ~1 GiB capacity on a t3.micro fleet).
+#   - Elasticsearch is skipped. The analytics ES consumer
+#     (`kafka-es-consumer`) is disabled via Helm value override; the
+#     recommendations service runs with ELASTICSEARCH_URL="" so the
+#     LangGraph agent's pgvector + Bedrock retrieve path remains live but
+#     the search retrieval step is short-circuited.
+#
+# Prerequisite: the EKS cluster must already exist (platform Terraform in
+# videostreamingplatform repo) and the analytics Terraform here must have
+# been applied so the IRSA role ARNs exist.
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        type: choice
+        description: 'Target environment'
+        options: [dev, prod]
+        required: true
+      cluster_name:
+        description: 'EKS cluster name (default: videostreamingplatform-<env>)'
+        required: false
+        default: ''
+
+env:
+  AWS_REGION: us-east-1
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ github.event.inputs.environment }}
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Fail fast if the IRSA role ARNs aren't set — empty values silently
+      # produce non-IRSA ServiceAccounts that fail when reaching AWS APIs.
+      - name: Preflight check — required secrets
+        env:
+          AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
+          ANALYTICS_IRSA_ROLE_ARN: ${{ secrets.ANALYTICS_IRSA_ROLE_ARN }}
+          RECOMMENDATIONS_IRSA_ROLE_ARN: ${{ secrets.RECOMMENDATIONS_IRSA_ROLE_ARN }}
+          INPUT_ENVIRONMENT: ${{ github.event.inputs.environment }}
+        run: |
+          missing=()
+          for var in AWS_ROLE_ARN ANALYTICS_IRSA_ROLE_ARN RECOMMENDATIONS_IRSA_ROLE_ARN INPUT_ENVIRONMENT; do
+            if [ -z "${!var}" ]; then
+              missing+=("$var")
+            fi
+          done
+          if [ ${#missing[@]} -gt 0 ]; then
+            echo "::error::Deploy aborted — empty secrets/inputs:"
+            printf '  - %s\n' "${missing[@]}"
+            exit 1
+          fi
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Resolve cluster name
+        id: cluster
+        run: |
+          name="${{ github.event.inputs.cluster_name }}"
+          if [ -z "$name" ]; then
+            name="videostreamingplatform-${{ github.event.inputs.environment }}"
+          fi
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+
+      - name: Update kubeconfig
+        run: |
+          aws eks update-kubeconfig \
+            --name "${{ steps.cluster.outputs.name }}" \
+            --region ${{ env.AWS_REGION }}
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.14.4
+
+      - name: Apply namespaces and RBAC
+        run: |
+          kubectl apply -f networking/namespaces.yaml
+          kubectl apply -f rbac/service-accounts.yaml
+
+      - name: Deploy Kafka
+        run: |
+          kubectl apply -f kafka/service.yaml
+          kubectl apply -f kafka/deployment.yaml
+          kubectl rollout status statefulset/kafka -n infra --timeout=10m
+          kubectl apply -f kafka/topics-init-job.yaml
+
+      - name: Deploy pgvector
+        run: |
+          kubectl apply -f pgvector/service.yaml
+          kubectl apply -f pgvector/deployment.yaml
+          kubectl rollout status statefulset/pgvector -n infra --timeout=10m
+
+      - name: Apply network policies
+        # Best-effort — the elasticsearch policy targets a namespace whose
+        # workload we intentionally don't deploy on free tier. Other
+        # policies still apply.
+        run: |
+          kubectl apply -f networking/network-policies.yaml || true
+
+      - name: Deploy analytics chart (kafka-es-consumer disabled)
+        run: |
+          helm upgrade --install analytics charts/analytics \
+            --namespace analytics --create-namespace \
+            -f charts/analytics/values.yaml \
+            -f charts/analytics/values-aws.yaml \
+            --set serviceAccount.roleArn="${{ secrets.ANALYTICS_IRSA_ROLE_ARN }}" \
+            --set kafkaEsConsumer.enabled=false \
+            --wait --timeout 5m
+
+      - name: Deploy recommendations chart (ES retrieval disabled)
+        run: |
+          helm upgrade --install recommendations charts/recommendations \
+            --namespace recommendations --create-namespace \
+            -f charts/recommendations/values.yaml \
+            -f charts/recommendations/values-aws.yaml \
+            --set serviceAccount.roleArn="${{ secrets.RECOMMENDATIONS_IRSA_ROLE_ARN }}" \
+            --set configDynamic.ELASTICSEARCH_URL="" \
+            --wait --timeout 5m
+
+      - name: Verify
+        run: |
+          kubectl get pods -n infra
+          kubectl get pods -n analytics
+          kubectl get pods -n recommendations
