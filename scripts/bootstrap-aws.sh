@@ -71,6 +71,8 @@ TF_STATE_BUCKET="${TF_STATE_BUCKET:-videostreamingplatform-terraform-state}"
 TF_LOCK_TABLE="${TF_LOCK_TABLE:-terraform-locks}"
 TFVARS_FILE="${TFVARS_FILE:-terraform.dev.tfvars}"
 ARGOCD_CHART_VERSION="${ARGOCD_CHART_VERSION:-7.7.10}"
+EBS_CSI_CHART_VERSION="${EBS_CSI_CHART_VERSION:-2.35.1}"
+EBS_CSI_NODE_COUNT="${EBS_CSI_NODE_COUNT:-3}"
 ENVIRONMENT="${ENVIRONMENT:-dev}"
 CLUSTER_NAME="${CLUSTER_NAME:-videostreamingplatform-${ENVIRONMENT}}"
 DEPLOY_MODE="${DEPLOY_MODE:-direct}"
@@ -254,6 +256,9 @@ phase_github_secrets() {
   log "  → $INFRA_REPO_SLUG"
   gh_secret_set "$INFRA_REPO_SLUG" ANALYTICS_IRSA_ROLE_ARN       "$(tf_output "$INFRA_TF_DIR" analytics_irsa_role_arn)"
   gh_secret_set "$INFRA_REPO_SLUG" RECOMMENDATIONS_IRSA_ROLE_ARN "$(tf_output "$INFRA_TF_DIR" recommendations_irsa_role_arn)"
+  # EBS CSI driver IRSA role — consumed by deploy-platform workflow when
+  # installing the upstream chart in place of the EKS managed addon.
+  gh_secret_set "$INFRA_REPO_SLUG" EBS_CSI_IRSA_ROLE_ARN         "$(tf_output "$PLATFORM_TF_DIR" ebs_csi_irsa_role_arn)"
 }
 
 # ----------------------------------------------------------------------------
@@ -428,6 +433,73 @@ apply_rendered_manifests() {
   done < <(find "$src_dir" -maxdepth 1 -type f -name '*.yaml' -print0)
 }
 
+# Install the upstream aws-ebs-csi-driver Helm chart, pinned to a small
+# subset of nodes (default: 2). The platform terraform deliberately does
+# NOT install the EKS-managed addon — that addon's DaemonSet ships an
+# ebs-csi-node pod to every node and runs into the t3.micro kubelet
+# max-pods=4 cap. By labeling only EBS_CSI_NODE_COUNT nodes with
+# `ebs-csi=true` and setting the chart's node nodeSelector to match, the
+# DaemonSet only schedules where it's needed (Kafka + pgvector
+# StatefulSets pin themselves to the same label). The IRSA role ARN
+# comes from the platform terraform output `ebs_csi_irsa_role_arn`.
+install_ebs_csi_helm() {
+  log "  installing aws-ebs-csi-driver via Helm (pinned to $EBS_CSI_NODE_COUNT nodes)"
+  local role_arn
+  role_arn=$( cd "$PLATFORM_TF_DIR" && terraform output -raw ebs_csi_irsa_role_arn 2>/dev/null ) || role_arn=""
+  [[ -n "$role_arn" ]] || { warn "    ebs_csi_irsa_role_arn output missing — chart controller will run without IRSA"; }
+
+  # Label the first N nodes (alphabetical sort = stable across re-runs)
+  # with ebs-csi=true so the DaemonSet + StatefulSets co-locate. Also taint
+  # them with `dedicated=ebs-csi:NoSchedule` so unrelated workloads (coredns,
+  # consumers, etc.) don't squat on these nodes — t3.micro max-pods=4 means
+  # every system pod that lands here costs us a slot for kafka/pgvector/ES.
+  local nodes
+  nodes=$(kubectl get nodes -o name | sort | head -n "$EBS_CSI_NODE_COUNT")
+  [[ -n "$nodes" ]] || die "    no nodes available to label"
+  local n
+  while IFS= read -r n; do
+    kubectl label "$n" ebs-csi=true --overwrite >/dev/null
+    kubectl taint "$n" dedicated=ebs-csi:NoSchedule --overwrite >/dev/null
+    log "    labeled+tainted $n  ebs-csi=true / dedicated=ebs-csi:NoSchedule"
+  done <<< "$nodes"
+
+  helm repo add aws-ebs-csi-driver https://kubernetes-sigs.github.io/aws-ebs-csi-driver >/dev/null 2>&1 || true
+  helm repo update >/dev/null
+
+  # `--set-string` for nodeSelector value: Helm parses bare `true` as a bool,
+  # but Kubernetes nodeSelector values must be strings, otherwise the chart's
+  # DaemonSet rejects with "cannot unmarshal bool into ... nodeSelector".
+  helm upgrade --install aws-ebs-csi-driver aws-ebs-csi-driver/aws-ebs-csi-driver \
+    --namespace kube-system \
+    --version "$EBS_CSI_CHART_VERSION" \
+    --set-string "node.nodeSelector.ebs-csi=true" \
+    --set "node.tolerations[0].key=dedicated" \
+    --set "node.tolerations[0].operator=Equal" \
+    --set "node.tolerations[0].value=ebs-csi" \
+    --set "node.tolerations[0].effect=NoSchedule" \
+    --set "controller.serviceAccount.create=true" \
+    --set "controller.serviceAccount.name=ebs-csi-controller-sa" \
+    ${role_arn:+--set-string controller.serviceAccount.annotations."eks\.amazonaws\.com/role-arn"="$role_arn"} \
+    --wait --timeout 5m || warn "  aws-ebs-csi-driver chart did not reach ready in 5m"
+
+  # Apply gp3 StorageClass + mark default. The chart leaves the cluster
+  # without a default StorageClass, so PVCs created by Kafka/pgvector
+  # without an explicit storageClassName would hang Pending.
+  kubectl apply -f - <<'EOF'
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: gp3
+  annotations:
+    storageclass.kubernetes.io/is-default-class: "true"
+provisioner: ebs.csi.aws.com
+volumeBindingMode: WaitForFirstConsumer
+parameters:
+  type: gp3
+  encrypted: "true"
+EOF
+}
+
 # Apply raw manifests + Helm charts directly. No GitOps controller.
 phase_deploy_direct() {
   log "phase 3: direct deployment (kubectl + helm)"
@@ -452,10 +524,18 @@ phase_deploy_direct() {
   # Job so MySQL schema exists before services connect.
   init_rds_schema
 
-  # 3.2 Shared in-cluster infra (Kafka + pgvector)
-  log "  applying shared infra (kafka, pgvector)"
+  # 3.1.c Install ebs-csi via Helm (pinned to N nodes) before any pod
+  # that needs an EBS-backed PVC. Kafka and pgvector StatefulSets carry
+  # `nodeSelector: {ebs-csi: "true"}` so they co-locate with the
+  # ebs-csi-node DaemonSet pods.
+  install_ebs_csi_helm
+
+  # 3.2 Shared in-cluster infra (Kafka + pgvector + Elasticsearch)
+  # ArgoCD apps cover Elasticsearch separately; in direct mode we apply it here.
+  log "  applying shared infra (kafka, pgvector, elasticsearch)"
   kubectl apply -f "$INFRA_REPO_ROOT/kafka/"
   kubectl apply -f "$INFRA_REPO_ROOT/pgvector/"
+  kubectl apply -f "$INFRA_REPO_ROOT/elasticsearch/"
 
   # 3.3 Network policies (applied after pods so labels match)
   log "  applying network policies"
@@ -515,9 +595,11 @@ phase_deploy_argocd() {
 
   # Seed imagePullSecret + rds-credentials before ArgoCD-managed workloads
   # sync. ArgoCD does not manage secrets that originate outside Git, so
-  # bootstrap owns both.
+  # bootstrap owns both. ebs-csi must also be installed before ArgoCD
+  # tries to bind PVCs for Kafka/pgvector.
   seed_ghcr_secret
   seed_rds_secret
+  install_ebs_csi_helm
 
   log "  installing ArgoCD via Helm (chart version $ARGOCD_CHART_VERSION)"
   helm repo add argo https://argoproj.github.io/argo-helm >/dev/null 2>&1 || true

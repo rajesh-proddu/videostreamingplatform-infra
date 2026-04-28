@@ -7,6 +7,11 @@ serviceAccount:
   # terraform output recommendations_irsa_role_arn
   roleArn: ROLE_ARN_PLACEHOLDER
 
+# Pulls private ghcr.io images. The Secret named `ghcr-pull` is seeded by
+# bootstrap-aws.sh (seed_ghcr_secret) before the chart installs.
+imagePullSecrets:
+  - name: ghcr-pull
+
 configDynamic:
   LLM_PROVIDER: bedrock
   AWS_REGION: us-east-1

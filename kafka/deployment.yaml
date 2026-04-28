@@ -14,6 +14,13 @@ spec:
       labels:
         app: kafka
     spec:
+      nodeSelector:
+        ebs-csi: "true"
+      tolerations:
+        - key: dedicated
+          operator: Equal
+          value: ebs-csi
+          effect: NoSchedule
       containers:
         - name: kafka
           image: apache/kafka:3.9.0
@@ -22,7 +29,15 @@ spec:
               name: plaintext
             - containerPort: 9093
               name: controller
+          resources:
+            requests:
+              memory: "384Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
           env:
+            - name: KAFKA_HEAP_OPTS
+              value: "-Xms128m -Xmx256m"
             - name: KAFKA_NODE_ID
               value: "1"
             - name: KAFKA_PROCESS_ROLES

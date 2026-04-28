@@ -51,10 +51,11 @@ jobs:
           AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
           ANALYTICS_IRSA_ROLE_ARN: ${{ secrets.ANALYTICS_IRSA_ROLE_ARN }}
           RECOMMENDATIONS_IRSA_ROLE_ARN: ${{ secrets.RECOMMENDATIONS_IRSA_ROLE_ARN }}
+          EBS_CSI_IRSA_ROLE_ARN: ${{ secrets.EBS_CSI_IRSA_ROLE_ARN }}
           INPUT_ENVIRONMENT: ${{ github.event.inputs.environment }}
         run: |
           missing=()
-          for var in AWS_ROLE_ARN ANALYTICS_IRSA_ROLE_ARN RECOMMENDATIONS_IRSA_ROLE_ARN INPUT_ENVIRONMENT; do
+          for var in AWS_ROLE_ARN ANALYTICS_IRSA_ROLE_ARN RECOMMENDATIONS_IRSA_ROLE_ARN EBS_CSI_IRSA_ROLE_ARN INPUT_ENVIRONMENT; do
             if [ -z "${!var}" ]; then
               missing+=("$var")
             fi
@@ -96,6 +97,60 @@ jobs:
           kubectl apply -f networking/namespaces.yaml
           kubectl apply -f rbac/service-accounts.yaml
 
+      # Install the upstream aws-ebs-csi-driver chart pinned to N nodes
+      # (labeled `ebs-csi=true` and tainted `dedicated=ebs-csi:NoSchedule`).
+      # The platform terraform deliberately does not install the EKS-managed
+      # addon — its DaemonSet would land on every t3.micro node and saturate
+      # kubelet max-pods=4. Kafka, pgvector, and elasticsearch StatefulSets
+      # carry the same nodeSelector + matching toleration so they co-locate
+      # with the ebs-csi-node DaemonSet pods. The taint keeps unrelated pods
+      # (coredns, consumers) from squatting on these nodes.
+      - name: Install aws-ebs-csi-driver (Helm, pinned)
+        env:
+          EBS_CSI_IRSA_ROLE_ARN: ${{ secrets.EBS_CSI_IRSA_ROLE_ARN }}
+          EBS_CSI_NODE_COUNT: '3'
+          EBS_CSI_CHART_VERSION: '2.35.1'
+        run: |
+          set -euo pipefail
+          # Label + taint the first N nodes (alphabetical, stable across reruns).
+          mapfile -t nodes < <(kubectl get nodes -o name | sort | head -n "$EBS_CSI_NODE_COUNT")
+          for n in "${nodes[@]}"; do
+            kubectl label "$n" ebs-csi=true --overwrite
+            kubectl taint "$n" dedicated=ebs-csi:NoSchedule --overwrite
+          done
+
+          helm repo add aws-ebs-csi-driver https://kubernetes-sigs.github.io/aws-ebs-csi-driver
+          helm repo update
+          # `--set-string` for nodeSelector value: bare `true` parses as bool,
+          # but Kubernetes nodeSelector values must be strings.
+          helm upgrade --install aws-ebs-csi-driver aws-ebs-csi-driver/aws-ebs-csi-driver \
+            --namespace kube-system \
+            --version "$EBS_CSI_CHART_VERSION" \
+            --set-string "node.nodeSelector.ebs-csi=true" \
+            --set "node.tolerations[0].key=dedicated" \
+            --set "node.tolerations[0].operator=Equal" \
+            --set "node.tolerations[0].value=ebs-csi" \
+            --set "node.tolerations[0].effect=NoSchedule" \
+            --set "controller.serviceAccount.create=true" \
+            --set "controller.serviceAccount.name=ebs-csi-controller-sa" \
+            --set-string "controller.serviceAccount.annotations.eks\.amazonaws\.com/role-arn=$EBS_CSI_IRSA_ROLE_ARN" \
+            --wait --timeout 5m
+
+          # Default StorageClass for Kafka/pgvector PVCs.
+          kubectl apply -f - <<'EOF'
+          apiVersion: storage.k8s.io/v1
+          kind: StorageClass
+          metadata:
+            name: gp3
+            annotations:
+              storageclass.kubernetes.io/is-default-class: "true"
+          provisioner: ebs.csi.aws.com
+          volumeBindingMode: WaitForFirstConsumer
+          parameters:
+            type: gp3
+            encrypted: "true"
+          EOF
+
       - name: Deploy Kafka
         run: |
           kubectl apply -f kafka/service.yaml
@@ -108,6 +163,11 @@ jobs:
           kubectl apply -f pgvector/service.yaml
           kubectl apply -f pgvector/deployment.yaml
           kubectl rollout status statefulset/pgvector -n infra --timeout=10m
+
+      - name: Deploy elasticsearch
+        run: |
+          kubectl apply -f elasticsearch/elasticsearch.yaml
+          kubectl rollout status statefulset/elasticsearch -n videostreamingplatform --timeout=10m
 
       - name: Apply network policies
         # Best-effort — the elasticsearch policy targets a namespace whose
