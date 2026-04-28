@@ -39,7 +39,7 @@ data "terraform_remote_state" "platform" {
   backend = "s3"
   config = {
     bucket = "videostreamingplatform-terraform-state"
-    key    = "eks/terraform.tfstate"
+    key    = "dev/terraform.tfstate"
     region = "us-east-1"
   }
 }

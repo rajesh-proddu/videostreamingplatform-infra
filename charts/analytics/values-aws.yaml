@@ -11,6 +11,11 @@ serviceAccount:
   # terraform output analytics_irsa_role_arn
   roleArn: ROLE_ARN_PLACEHOLDER
 
+# Pulls private ghcr.io images. The Secret named `ghcr-pull` is seeded by
+# bootstrap-aws.sh (seed_ghcr_secret) before the chart installs.
+imagePullSecrets:
+  - name: ghcr-pull
+
 # Real S3 + Glue + Athena targets on AWS.
 envDynamic:
   ICEBERG_WAREHOUSE: s3://videostreamingplatform-iceberg-warehouse-dev/
