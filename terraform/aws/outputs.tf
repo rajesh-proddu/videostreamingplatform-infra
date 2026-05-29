@@ -51,4 +51,4 @@ output "athena_workgroup" {
 output "athena_results_bucket" {
   description = "S3 bucket for Athena query results"
   value       = aws_s3_bucket.athena_results.bucket
-}
+} 

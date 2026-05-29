@@ -72,7 +72,7 @@ TF_LOCK_TABLE="${TF_LOCK_TABLE:-terraform-locks}"
 TFVARS_FILE="${TFVARS_FILE:-terraform.dev.tfvars}"
 ARGOCD_CHART_VERSION="${ARGOCD_CHART_VERSION:-7.7.10}"
 EBS_CSI_CHART_VERSION="${EBS_CSI_CHART_VERSION:-2.35.1}"
-EBS_CSI_NODE_COUNT="${EBS_CSI_NODE_COUNT:-3}"
+EBS_CSI_NODE_COUNT="${EBS_CSI_NODE_COUNT:-5}"
 ENVIRONMENT="${ENVIRONMENT:-dev}"
 CLUSTER_NAME="${CLUSTER_NAME:-videostreamingplatform-${ENVIRONMENT}}"
 DEPLOY_MODE="${DEPLOY_MODE:-direct}"
@@ -433,35 +433,41 @@ apply_rendered_manifests() {
   done < <(find "$src_dir" -maxdepth 1 -type f -name '*.yaml' -print0)
 }
 
-# Install the upstream aws-ebs-csi-driver Helm chart, pinned to a small
-# subset of nodes (default: 2). The platform terraform deliberately does
-# NOT install the EKS-managed addon — that addon's DaemonSet ships an
-# ebs-csi-node pod to every node and runs into the t3.micro kubelet
-# max-pods=4 cap. By labeling only EBS_CSI_NODE_COUNT nodes with
-# `ebs-csi=true` and setting the chart's node nodeSelector to match, the
-# DaemonSet only schedules where it's needed (Kafka + pgvector
-# StatefulSets pin themselves to the same label). The IRSA role ARN
-# comes from the platform terraform output `ebs_csi_irsa_role_arn`.
+# Install aws-ebs-csi-driver via the upstream Helm chart and pin its node
+# DaemonSet to the nodes that already host the EBS-backed StatefulSets
+# (Kafka, pgvector, Elasticsearch). The EKS-managed addon is intentionally
+# not installed by the platform terraform — we need explicit control of
+# `node.nodeSelector` because the t3.micro (free-tier) kubelet max-pods=4
+# cap leaves no room for a CSI pod on every node. EBS_CSI_NODE_COUNT
+# controls how many nodes carry the `ebs-csi=true` label; those same nodes
+# are where the StatefulSets land (one node set, dual duty — no separate
+# CSI-only node pool). The IRSA role ARN comes from the platform terraform
+# output `ebs_csi_irsa_role_arn`.
 install_ebs_csi_helm() {
-  log "  installing aws-ebs-csi-driver via Helm (pinned to $EBS_CSI_NODE_COUNT nodes)"
+  log "  installing aws-ebs-csi-driver via Helm (pinned to $EBS_CSI_NODE_COUNT StatefulSet-hosting nodes)"
   local role_arn
   role_arn=$( cd "$PLATFORM_TF_DIR" && terraform output -raw ebs_csi_irsa_role_arn 2>/dev/null ) || role_arn=""
   [[ -n "$role_arn" ]] || { warn "    ebs_csi_irsa_role_arn output missing — chart controller will run without IRSA"; }
 
-  # Label the first N nodes (alphabetical sort = stable across re-runs)
-  # with ebs-csi=true so the DaemonSet + StatefulSets co-locate. Also taint
-  # them with `dedicated=ebs-csi:NoSchedule` so unrelated workloads (coredns,
-  # consumers, etc.) don't squat on these nodes — t3.micro max-pods=4 means
-  # every system pod that lands here costs us a slot for kafka/pgvector/ES.
+  # Label the first N nodes (alphabetical sort = stable across re-runs) with
+  # ebs-csi=true. These are the StatefulSet-hosting nodes — the chart's
+  # DaemonSet and Kafka/pgvector/ES StatefulSets all match this label, so
+  # they co-locate. The dedicated=ebs-csi:NoSchedule taint keeps unrelated
+  # pods (coredns, consumers, analytics) off these nodes so they don't
+  # consume slots from the tiny t3.micro pod budget.
   local nodes
   nodes=$(kubectl get nodes -o name | sort | head -n "$EBS_CSI_NODE_COUNT")
   [[ -n "$nodes" ]] || die "    no nodes available to label"
   local n
   while IFS= read -r n; do
-    kubectl label "$n" ebs-csi=true --overwrite >/dev/null
-    kubectl taint "$n" dedicated=ebs-csi:NoSchedule --overwrite >/dev/null
-    log "    labeled+tainted $n  ebs-csi=true / dedicated=ebs-csi:NoSchedule"
+    # Remove the 'node/' prefix so $node_name is just 'ip-10-0-x-x...'
+    node_name="${n#node/}" 
+    
+    kubectl label node "$node_name" ebs-csi=true --overwrite >/dev/null
+    kubectl taint node "$node_name" dedicated=ebs-csi:NoSchedule --overwrite >/dev/null
+    log "    labeled+tainted $node_name  ebs-csi=true / dedicated=ebs-csi:NoSchedule"
   done <<< "$nodes"
+
 
   helm repo add aws-ebs-csi-driver https://kubernetes-sigs.github.io/aws-ebs-csi-driver >/dev/null 2>&1 || true
   helm repo update >/dev/null
@@ -524,10 +530,11 @@ phase_deploy_direct() {
   # Job so MySQL schema exists before services connect.
   init_rds_schema
 
-  # 3.1.c Install ebs-csi via Helm (pinned to N nodes) before any pod
-  # that needs an EBS-backed PVC. Kafka and pgvector StatefulSets carry
-  # `nodeSelector: {ebs-csi: "true"}` so they co-locate with the
-  # ebs-csi-node DaemonSet pods.
+  # 3.1.c Install aws-ebs-csi-driver via Helm and pin the DaemonSet to the
+  # StatefulSet-hosting nodes (labeled `ebs-csi=true`). Must run before any
+  # pod that needs an EBS-backed PVC. Kafka, pgvector, and Elasticsearch
+  # StatefulSets carry `nodeSelector: {ebs-csi: "true"}` + matching toleration
+  # so they share nodes with the CSI DaemonSet pods (no separate CSI pool).
   install_ebs_csi_helm
 
   # 3.2 Shared in-cluster infra (Kafka + pgvector + Elasticsearch)

@@ -97,18 +97,22 @@ jobs:
           kubectl apply -f networking/namespaces.yaml
           kubectl apply -f rbac/service-accounts.yaml
 
-      # Install the upstream aws-ebs-csi-driver chart pinned to N nodes
-      # (labeled `ebs-csi=true` and tainted `dedicated=ebs-csi:NoSchedule`).
-      # The platform terraform deliberately does not install the EKS-managed
-      # addon — its DaemonSet would land on every t3.micro node and saturate
-      # kubelet max-pods=4. Kafka, pgvector, and elasticsearch StatefulSets
-      # carry the same nodeSelector + matching toleration so they co-locate
-      # with the ebs-csi-node DaemonSet pods. The taint keeps unrelated pods
-      # (coredns, consumers) from squatting on these nodes.
-      - name: Install aws-ebs-csi-driver (Helm, pinned)
+      # Install aws-ebs-csi-driver via the upstream Helm chart and pin the
+      # node DaemonSet to the nodes that already host the EBS-backed
+      # StatefulSets (labeled `ebs-csi=true` and tainted
+      # `dedicated=ebs-csi:NoSchedule`). The platform terraform deliberately
+      # does not install the EKS-managed addon — we need explicit control of
+      # `node.nodeSelector` because t3.micro (free tier) max-pods=4 leaves
+      # no room for a CSI pod on every node. Kafka, pgvector, and
+      # elasticsearch StatefulSets carry the same nodeSelector + matching
+      # toleration so they share nodes with the CSI DaemonSet pods — one
+      # node set, dual duty, no separate CSI-only pool. The taint keeps
+      # unrelated pods (coredns, consumers) off these nodes so they don't
+      # consume slots from the tiny pod budget.
+      - name: Install aws-ebs-csi-driver (Helm, pinned to StatefulSet nodes)
         env:
           EBS_CSI_IRSA_ROLE_ARN: ${{ secrets.EBS_CSI_IRSA_ROLE_ARN }}
-          EBS_CSI_NODE_COUNT: '3'
+          EBS_CSI_NODE_COUNT: '5'
           EBS_CSI_CHART_VERSION: '2.35.1'
         run: |
           set -euo pipefail

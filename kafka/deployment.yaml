@@ -5,7 +5,12 @@ metadata:
   namespace: infra
 spec:
   serviceName: kafka
-  replicas: 1
+  replicas: 3
+  # Parallel start is required for KRaft: with OrderedReady, kafka-0 can't become
+  # Ready until the controller quorum forms (needs 2 of 3 voters), but kafka-1
+  # wouldn't start until kafka-0 is Ready — a deadlock. Parallel lets all three
+  # boot together and elect a leader.
+  podManagementPolicy: Parallel
   selector:
     matchLabels:
       app: kafka
@@ -21,9 +26,31 @@ spec:
           operator: Equal
           value: ebs-csi
           effect: NoSchedule
+      # Spread brokers one-per-node so a single node loss can't take down the
+      # quorum. With 5 ebs-csi t3.micro nodes (one ~512Mi broker fits per node),
+      # the 3 brokers land on 3 distinct nodes; pgvector + ES take the other two.
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  app: kafka
+              topologyKey: kubernetes.io/hostname
       containers:
         - name: kafka
           image: apache/kafka:3.9.0
+          # Per-pod NODE_ID and advertised listener are derived from the
+          # StatefulSet ordinal (kafka-0 -> node 1, kafka-1 -> node 2, ...),
+          # then we hand off to the image's normal entrypoint chain.
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -e
+              ORD="${HOSTNAME##*-}"
+              export KAFKA_NODE_ID="$((ORD + 1))"
+              export KAFKA_ADVERTISED_LISTENERS="PLAINTEXT://${HOSTNAME}.kafka.infra.svc.cluster.local:9092"
+              exec /__cacert_entrypoint.sh /etc/kafka/docker/run
           ports:
             - containerPort: 9092
               name: plaintext
@@ -38,14 +65,10 @@ spec:
           env:
             - name: KAFKA_HEAP_OPTS
               value: "-Xms128m -Xmx256m"
-            - name: KAFKA_NODE_ID
-              value: "1"
             - name: KAFKA_PROCESS_ROLES
               value: broker,controller
             - name: KAFKA_LISTENERS
               value: PLAINTEXT://:9092,CONTROLLER://:9093
-            - name: KAFKA_ADVERTISED_LISTENERS
-              value: PLAINTEXT://kafka-0.kafka.infra.svc.cluster.local:9092
             - name: KAFKA_INTER_BROKER_LISTENER_NAME
               value: PLAINTEXT
             - name: KAFKA_CONTROLLER_LISTENER_NAMES
@@ -53,13 +76,17 @@ spec:
             - name: KAFKA_LISTENER_SECURITY_PROTOCOL_MAP
               value: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
             - name: KAFKA_CONTROLLER_QUORUM_VOTERS
-              value: 1@kafka-0.kafka.infra.svc.cluster.local:9093
+              value: 1@kafka-0.kafka.infra.svc.cluster.local:9093,2@kafka-1.kafka.infra.svc.cluster.local:9093,3@kafka-2.kafka.infra.svc.cluster.local:9093
             - name: KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR
-              value: "1"
+              value: "3"
             - name: KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR
-              value: "1"
+              value: "3"
             - name: KAFKA_TRANSACTION_STATE_LOG_MIN_ISR
-              value: "1"
+              value: "2"
+            - name: KAFKA_MESSAGE_MAX_BYTES
+              value: "2097152"
+            - name: KAFKA_REPLICA_FETCH_MAX_BYTES
+              value: "4194304"
             - name: CLUSTER_ID
               value: MkU3OEVBNTcwNTJENDM2Qk
           readinessProbe:

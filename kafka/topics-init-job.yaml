@@ -11,7 +11,8 @@ spec:
       initContainers:
         - name: wait-for-kafka
           image: busybox:1.36
-          command: ['sh', '-c', 'until nc -z kafka.infra.svc.cluster.local 9092; do echo waiting for kafka; sleep 5; done']
+          # Wait for all three brokers — RF=3 topic creation needs the full set.
+          command: ['sh', '-c', 'for h in kafka-0 kafka-1 kafka-2; do until nc -z ${h}.kafka.infra.svc.cluster.local 9092; do echo "waiting for $h"; sleep 5; done; done']
       containers:
         - name: create-topics
           image: apache/kafka:3.9.0
@@ -21,8 +22,8 @@ spec:
             - |
               /opt/kafka/bin/kafka-topics.sh --create --if-not-exists \
                 --bootstrap-server kafka.infra.svc.cluster.local:9092 \
-                --topic video-events --partitions 3 --replication-factor 1
+                --topic video-events --partitions 3 --replication-factor 3
               /opt/kafka/bin/kafka-topics.sh --create --if-not-exists \
                 --bootstrap-server kafka.infra.svc.cluster.local:9092 \
-                --topic watch-events --partitions 6 --replication-factor 1
+                --topic watch-events --partitions 6 --replication-factor 3
               echo "Topics created successfully"
