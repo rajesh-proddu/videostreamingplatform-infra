@@ -16,6 +16,10 @@ spec:
       labels:
         app: recommendation-api
         {{- toYaml .Values.labels | nindent 8 }}
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: {{ .Values.deployment.port | quote }}
+        prometheus.io/path: "/metrics"
     spec:
       serviceAccountName: {{ .Values.serviceAccount.name }}
       containers:
@@ -24,6 +28,7 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           ports:
             - containerPort: {{ .Values.deployment.port }}
+              name: http
           envFrom:
             - configMapRef:
                 name: recommendation-config

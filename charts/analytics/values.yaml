@@ -30,15 +30,21 @@ envDynamic:
   GLUE_SCHEMA_REGISTRY_NAME: videostreamingplatform-dev
   ATHENA_WORKGROUP: ""
   ATHENA_RESULTS_BUCKET: ""
+  # OTLP-HTTP base endpoint for traces; observability.py normalizes scheme.
+  # Empty disables observability (matches Go-side convention).
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger.observability.svc.cluster.local:4318
 
 kafkaEsConsumer:
   enabled: true
   replicas: 1
   image: kafka-es-consumer
+  metricsPort: 9100
   extraEnv:
     KAFKA_VIDEO_TOPIC: video-events
     KAFKA_GROUP_ID: kafka-es-consumer
     ES_VIDEO_INDEX: videos
+    OTEL_SERVICE_NAME: kafka-es-consumer
+    METRICS_PORT: "9100"
   resources:
     requests:
       memory: 128Mi
@@ -51,10 +57,13 @@ watchHistoryConsumer:
   enabled: true
   replicas: 1
   image: watch-history-consumer
+  metricsPort: 9100
   extraEnv:
     KAFKA_WATCH_TOPIC: watch-events
     KAFKA_GROUP_ID: watch-history-consumer
     ICEBERG_TABLE: analytics.watch_history
+    OTEL_SERVICE_NAME: watch-history-consumer
+    METRICS_PORT: "9100"
   resources:
     requests:
       memory: 256Mi
@@ -83,3 +92,44 @@ catalogAdmin:
     enabled: true
     schedule: "0 4 * * *"
     args: [expire-snapshots, analytics.watch_history]
+
+# Daily batch — computes per-user feature vectors from Iceberg watch_history and
+# upserts them to pgvector.user_features (read by the recommendations service).
+userFeaturesJob:
+  enabled: true
+  schedule: "0 2 * * *"  # daily at 02:00 UTC
+  image: feature-jobs
+  extraEnv:
+    PGVECTOR_URL: postgresql://recouser:recopass@pgvector.infra.svc.cluster.local:5432/recommendations
+    USER_FEATURES_WINDOW_DAYS: "30"
+    ICEBERG_TABLE: analytics.watch_history
+    OTEL_SERVICE_NAME: user-features-job
+  resources:
+    requests:
+      memory: 384Mi
+      cpu: 200m
+    limits:
+      memory: 768Mi
+      cpu: 500m
+
+# Hourly batch — counts last-24h watches per video from Iceberg, writes top-N
+# to pgvector.trending_videos (read by the recommendations service).
+# Window > cadence on purpose: amortizes the freshest Iceberg partition's small-
+# files cost across more-compacted older data.
+trendingJob:
+  enabled: true
+  schedule: "5 * * * *"  # hourly at :05
+  image: feature-jobs
+  extraEnv:
+    PGVECTOR_URL: postgresql://recouser:recopass@pgvector.infra.svc.cluster.local:5432/recommendations
+    TRENDING_WINDOW_HOURS: "24"
+    TRENDING_TOP_N: "100"
+    ICEBERG_TABLE: analytics.watch_history
+    OTEL_SERVICE_NAME: trending-job
+  resources:
+    requests:
+      memory: 256Mi
+      cpu: 100m
+    limits:
+      memory: 512Mi
+      cpu: 250m

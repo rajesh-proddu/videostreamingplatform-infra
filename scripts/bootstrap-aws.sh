@@ -356,6 +356,29 @@ seed_rds_secret() {
   log "    rds-credentials Secret applied (host=$host, db=$rds_db, user=$user)"
 }
 
+# Seed the shared HS256 secret used by userservice (issues JWTs) and dataservice
+# (verifies them to gate playback). Idempotent: an existing secret is preserved so
+# previously issued tokens keep validating. Override with JWT_SIGNING_SECRET.
+seed_auth_secret() {
+  log "  seeding auth-secrets Secret (JWT signing key)"
+  kubectl create namespace videostreamingplatform --dry-run=client -o yaml | kubectl apply -f - >/dev/null
+
+  if kubectl get secret auth-secrets -n videostreamingplatform >/dev/null 2>&1; then
+    log "    auth-secrets already exists — preserving existing key"
+    return 0
+  fi
+
+  local jwt_secret="${JWT_SIGNING_SECRET:-}"
+  if [[ -z "$jwt_secret" ]]; then
+    jwt_secret=$(openssl rand -hex 32)
+  fi
+  kubectl create secret generic auth-secrets \
+    --namespace videostreamingplatform \
+    --from-literal=jwt-signing-secret="$jwt_secret" \
+    --dry-run=client -o yaml | kubectl apply -f -
+  log "    auth-secrets Secret applied"
+}
+
 # Load init-db.sql from the platform repo into a ConfigMap and run the
 # db-init Job (applies schema to RDS using the rds-credentials Secret).
 # Idempotent — the SQL uses CREATE TABLE IF NOT EXISTS, and the Job has
@@ -525,6 +548,7 @@ phase_deploy_direct() {
   # 3.1.a Seed rds-credentials Secret from Secrets Manager (needed by
   # metadata-service / data-service before they start).
   seed_rds_secret
+  seed_auth_secret
 
   # 3.1.b Load init-db.sql into a ConfigMap and run the one-shot db-init
   # Job so MySQL schema exists before services connect.
@@ -606,6 +630,7 @@ phase_deploy_argocd() {
   # tries to bind PVCs for Kafka/pgvector.
   seed_ghcr_secret
   seed_rds_secret
+  seed_auth_secret
   install_ebs_csi_helm
 
   log "  installing ArgoCD via Helm (chart version $ARGOCD_CHART_VERSION)"

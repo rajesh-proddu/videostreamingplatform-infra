@@ -1,43 +1,44 @@
-{{- if .Values.watchHistoryConsumer.enabled }}
+{{- if .Values.embeddingsConsumer.enabled }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: watch-history-consumer
+  name: embeddings-consumer
   namespace: {{ .Values.namespace }}
   labels:
-    app: watch-history-consumer
+    app: embeddings-consumer
     {{- toYaml .Values.labels | nindent 4 }}
 spec:
-  replicas: {{ .Values.watchHistoryConsumer.replicas }}
+  replicas: {{ .Values.embeddingsConsumer.replicas }}
   selector:
     matchLabels:
-      app: watch-history-consumer
+      app: embeddings-consumer
   template:
     metadata:
       labels:
-        app: watch-history-consumer
+        app: embeddings-consumer
         {{- toYaml .Values.labels | nindent 8 }}
       annotations:
         prometheus.io/scrape: "true"
-        prometheus.io/port: {{ .Values.watchHistoryConsumer.metricsPort | default 9100 | quote }}
+        prometheus.io/port: {{ .Values.embeddingsConsumer.metricsPort | default 9100 | quote }}
         prometheus.io/path: "/metrics"
     spec:
       serviceAccountName: {{ .Values.serviceAccount.name }}
       containers:
         - name: consumer
-          image: {{ .Values.image.registry }}/{{ .Values.watchHistoryConsumer.image }}:{{ .Values.image.tag }}
+          image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["python", "-m", "src.consumers.embeddings_consumer"]
           ports:
             - name: metrics
-              containerPort: {{ .Values.watchHistoryConsumer.metricsPort | default 9100 }}
+              containerPort: {{ .Values.embeddingsConsumer.metricsPort | default 9100 }}
           envFrom:
             - configMapRef:
-                name: analytics-env
+                name: recommendation-config
           env:
-            {{- range $k, $v := .Values.watchHistoryConsumer.extraEnv }}
+            {{- range $k, $v := .Values.embeddingsConsumer.extraEnv }}
             - name: {{ $k }}
               value: {{ $v | quote }}
             {{- end }}
           resources:
-            {{- toYaml .Values.watchHistoryConsumer.resources | nindent 12 }}
+            {{- toYaml .Values.embeddingsConsumer.resources | nindent 12 }}
 {{- end }}

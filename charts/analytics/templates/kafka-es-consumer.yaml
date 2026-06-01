@@ -17,12 +17,19 @@ spec:
       labels:
         app: kafka-es-consumer
         {{- toYaml .Values.labels | nindent 8 }}
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: {{ .Values.kafkaEsConsumer.metricsPort | default 9100 | quote }}
+        prometheus.io/path: "/metrics"
     spec:
       serviceAccountName: {{ .Values.serviceAccount.name }}
       containers:
         - name: consumer
           image: {{ .Values.image.registry }}/{{ .Values.kafkaEsConsumer.image }}:{{ .Values.image.tag }}
           imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - name: metrics
+              containerPort: {{ .Values.kafkaEsConsumer.metricsPort | default 9100 }}
           envFrom:
             - configMapRef:
                 name: analytics-env

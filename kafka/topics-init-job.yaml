@@ -26,4 +26,12 @@ spec:
               /opt/kafka/bin/kafka-topics.sh --create --if-not-exists \
                 --bootstrap-server kafka.infra.svc.cluster.local:9092 \
                 --topic watch-events --partitions 6 --replication-factor 3
+              # DLQ topics for poison-message routing. Explicit creation so the
+              # consumers don't depend on broker auto-create being enabled.
+              /opt/kafka/bin/kafka-topics.sh --create --if-not-exists \
+                --bootstrap-server kafka.infra.svc.cluster.local:9092 \
+                --topic video-events-dlq --partitions 1 --replication-factor 3
+              /opt/kafka/bin/kafka-topics.sh --create --if-not-exists \
+                --bootstrap-server kafka.infra.svc.cluster.local:9092 \
+                --topic video-events-embeddings-dlq --partitions 1 --replication-factor 3
               echo "Topics created successfully"

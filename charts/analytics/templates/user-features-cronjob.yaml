@@ -1,0 +1,37 @@
+{{- if .Values.userFeaturesJob.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: user-features-job
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- toYaml .Values.labels | nindent 4 }}
+spec:
+  schedule: {{ .Values.userFeaturesJob.schedule | quote }}
+  # Each run is full-history compute — no benefit to overlapping runs, and
+  # they'd compete for the same pgvector connection budget.
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          serviceAccountName: {{ .Values.serviceAccount.name }}
+          restartPolicy: OnFailure
+          containers:
+            - name: feature-jobs
+              image: {{ .Values.image.registry }}/{{ .Values.userFeaturesJob.image }}:{{ .Values.image.tag }}
+              imagePullPolicy: {{ .Values.image.pullPolicy }}
+              command: ["python", "-m", "src.user_features"]
+              envFrom:
+                - configMapRef:
+                    name: analytics-env
+              env:
+                {{- range $k, $v := .Values.userFeaturesJob.extraEnv }}
+                - name: {{ $k }}
+                  value: {{ $v | quote }}
+                {{- end }}
+              resources:
+                {{- toYaml .Values.userFeaturesJob.resources | nindent 16 }}
+{{- end }}

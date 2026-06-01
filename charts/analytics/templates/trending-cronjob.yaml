@@ -1,0 +1,35 @@
+{{- if .Values.trendingJob.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: trending-job
+  namespace: {{ .Values.namespace }}
+  labels:
+    {{- toYaml .Values.labels | nindent 4 }}
+spec:
+  schedule: {{ .Values.trendingJob.schedule | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          serviceAccountName: {{ .Values.serviceAccount.name }}
+          restartPolicy: OnFailure
+          containers:
+            - name: feature-jobs
+              image: {{ .Values.image.registry }}/{{ .Values.trendingJob.image }}:{{ .Values.image.tag }}
+              imagePullPolicy: {{ .Values.image.pullPolicy }}
+              command: ["python", "-m", "src.trending"]
+              envFrom:
+                - configMapRef:
+                    name: analytics-env
+              env:
+                {{- range $k, $v := .Values.trendingJob.extraEnv }}
+                - name: {{ $k }}
+                  value: {{ $v | quote }}
+                {{- end }}
+              resources:
+                {{- toYaml .Values.trendingJob.resources | nindent 16 }}
+{{- end }}

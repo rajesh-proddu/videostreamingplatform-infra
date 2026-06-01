@@ -18,6 +18,7 @@ image:
 config:
   API_PORT: "8000"
   MAX_RECOMMENDATIONS: "10"
+  OTEL_SERVICE_NAME: recommendation-api
 
 # Dynamic config — endpoints. Local defaults point at in-cluster services;
 # values-aws.yaml overrides LLM_PROVIDER and the Bedrock model IDs.
@@ -26,6 +27,9 @@ configDynamic:
   ELASTICSEARCH_URL: http://elasticsearch.videostreamingplatform.svc.cluster.local:9200
   KAFKA_BROKERS: kafka.infra.svc.cluster.local:9092
   PGVECTOR_URL: postgresql://recouser:recopass@pgvector.infra.svc.cluster.local:5432/recommendations
+  # OTLP-HTTP base endpoint for traces; src/observability.py normalizes scheme.
+  # Empty disables observability (matches Go-side `OTEL_ENABLED=false` semantics).
+  OTEL_EXPORTER_OTLP_ENDPOINT: http://jaeger.observability.svc.cluster.local:4318
 
 deployment:
   replicas: 2
@@ -55,3 +59,26 @@ hpa:
   maxReplicas: 6
   cpuUtilization: 60
   memoryUtilization: 80
+
+# Kafka → pgvector embeddings consumer. Shares the recommendations Docker
+# image — different `command` overrides the API entrypoint.
+embeddingsConsumer:
+  enabled: true
+  replicas: 1
+  metricsPort: 9100
+  extraEnv:
+    KAFKA_VIDEO_TOPIC: video-events
+    KAFKA_GROUP_ID: embeddings-consumer
+    KAFKA_DLQ_TOPIC: video-events-embeddings-dlq
+    EMBEDDINGS_BATCH_SIZE: "32"
+    EMBEDDINGS_IDLE_FLUSH_SECONDS: "5.0"
+    MAX_CONCURRENT_EMBEDS: "8"
+    OTEL_SERVICE_NAME: embeddings-consumer
+    METRICS_PORT: "9100"
+  resources:
+    requests:
+      memory: 256Mi
+      cpu: 100m
+    limits:
+      memory: 512Mi
+      cpu: 500m
