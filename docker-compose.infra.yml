@@ -170,6 +170,30 @@ services:
     networks:
       - infra
 
+  # Iceberg REST catalog. Replaces LocalStack Glue (Pro-only) for local
+  # catalog maintenance. Backend is in-memory SQLite — registrations are
+  # lost on restart, but the metadata.json + Parquet files persist in
+  # s3://iceberg-warehouse, so re-running catalog-admin create-tables is
+  # the only step needed after a restart.
+  iceberg-rest:
+    image: tabulario/iceberg-rest:latest
+    container_name: iceberg-rest
+    depends_on:
+      localstack:
+        condition: service_healthy
+    ports:
+      - "8181:8181"
+    environment:
+      AWS_REGION: us-east-1
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      CATALOG_WAREHOUSE: s3://iceberg-warehouse/
+      CATALOG_IO__IMPL: org.apache.iceberg.aws.s3.S3FileIO
+      CATALOG_S3_ENDPOINT: http://localstack:4566
+      CATALOG_S3_PATH-STYLE-ACCESS: "true"
+    networks:
+      - infra
+
 networks:
   infra:
     name: videostreamingplatform-infra
