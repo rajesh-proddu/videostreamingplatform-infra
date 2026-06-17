@@ -613,6 +613,16 @@ phase_deploy_direct() {
     --wait --timeout 5m || warn "  recommendations chart did not reach ready in 5m"
   patch_sa_ghcr_pull recommendations recommendations-sa
 
+  # Notifications chart targets the videostreamingplatform namespace to reuse
+  # auth-secrets / rds-credentials / app-config / ghcr-pull — no IRSA.
+  log "  helm upgrade --install notifications"
+  helm upgrade --install notifications "$INFRA_REPO_ROOT/charts/notifications" \
+    --namespace videostreamingplatform --create-namespace \
+    -f "$INFRA_REPO_ROOT/charts/notifications/values.yaml" \
+    -f "$INFRA_REPO_ROOT/charts/notifications/values-aws.yaml" \
+    --wait --timeout 5m || warn "  notifications chart did not reach ready in 5m"
+  patch_sa_ghcr_pull videostreamingplatform notifications-sa
+
   log "  final pod status:"
   kubectl get pods -A -o \
     custom-columns='NS:.metadata.namespace,NAME:.metadata.name,STATUS:.status.phase,READY:.status.containerStatuses[*].ready' \

@@ -200,8 +200,17 @@ jobs:
             --set configDynamic.ELASTICSEARCH_URL="" \
             --wait --timeout 5m
 
+      - name: Deploy notifications chart
+        run: |
+          helm upgrade --install notifications charts/notifications \
+            --namespace videostreamingplatform --create-namespace \
+            -f charts/notifications/values.yaml \
+            -f charts/notifications/values-aws.yaml \
+            --wait --timeout 5m
+
       - name: Verify
         run: |
           kubectl get pods -n infra
           kubectl get pods -n analytics
           kubectl get pods -n recommendations
+          kubectl get pods -n videostreamingplatform

@@ -1,0 +1,26 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: notifications
+  namespace: argocd
+spec:
+  project: platform
+  source:
+    repoURL: https://github.com/rajesh-proddu/videostreamingplatform-infra.git
+    targetRevision: master
+    path: charts/notifications
+    # AWS deploy: RDS-sourced MySQL creds + NLB Service + ghcr pull secret.
+    # Drop values-aws.yaml to run against Kind with the local defaults.
+    helm:
+      valueFiles:
+        - values.yaml
+        - values-aws.yaml
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: videostreamingplatform
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
