@@ -1,0 +1,88 @@
+# Default (local / Kind) values. Targets the videostreamingplatform namespace to
+# reuse its app-config ConfigMap (MYSQL_*, KAFKA_BROKERS, REDIS_ADDR) and the
+# auth-secrets / db-credentials Secrets — no new namespace, no IRSA.
+namespace: videostreamingplatform
+
+serviceAccount:
+  name: notifications-sa
+
+labels:
+  app.kubernetes.io/part-of: videostreamingplatform
+  app.kubernetes.io/component: notifications
+
+image:
+  repository: ghcr.io/rajesh-proddu/videostreamingplatform-notifications/notifications
+  tag: latest
+  pullPolicy: IfNotPresent
+
+# Pull secrets for private ghcr images — set in values-aws.yaml only.
+imagePullSecrets: []
+
+# Static, env-agnostic config rendered into the notification-config ConfigMap.
+# MYSQL_*, KAFKA_BROKERS and REDIS_ADDR are inherited from the shared app-config
+# ConfigMap via envFrom (see deployment), so they are not repeated here.
+config:
+  NOTIF_HTTP_PORT: "8083"
+  KAFKA_SUBSCRIPTION_TOPIC: subscription-events
+  KAFKA_NOTIFICATION_TOPIC: notification-events
+  KAFKA_NOTIFICATION_DLQ_TOPIC: notification-events-dlq
+  NOTIF_RULES_GROUP_ID: notif-rules
+  NOTIF_WEB_GROUP_ID: ch-web
+  # Weekly-report source: in-cluster pgvector (same DNS in Kind and EKS).
+  PGHOST: pgvector.infra.svc.cluster.local
+  PGPORT: "5432"
+  PGUSER: recouser
+  PGPASSWORD: recopass
+  PGDATABASE: recommendations
+  PGSSLMODE: disable
+
+# Reused shared ConfigMaps (envFrom). app-config supplies MYSQL_HOST/PORT/
+# DATABASE/USER, KAFKA_BROKERS, KAFKA_VIDEO_TOPIC and REDIS_ADDR.
+envFrom:
+  - configMapRef:
+      name: notification-config
+  - configMapRef:
+      name: app-config
+
+# Per-env secret wiring (lists are replaced, not merged, by values-aws.yaml).
+# Local: MySQL password from db-credentials; JWT from auth-secrets.
+env:
+  - name: JWT_SIGNING_SECRET
+    valueFrom:
+      secretKeyRef:
+        name: auth-secrets
+        key: jwt-signing-secret
+  - name: MYSQL_PASSWORD
+    valueFrom:
+      secretKeyRef:
+        name: db-credentials
+        key: password
+
+deployment:
+  replicas: 1
+  port: 8083
+  resources:
+    requests:
+      memory: 64Mi
+      cpu: 50m
+    limits:
+      memory: 128Mi
+      cpu: 250m
+  readinessProbe:
+    path: /ready
+    initialDelaySeconds: 5
+    periodSeconds: 5
+  livenessProbe:
+    path: /health
+    initialDelaySeconds: 10
+    periodSeconds: 10
+
+service:
+  type: NodePort
+  port: 8083
+  nodePort: 30093
+  annotations: {}
+
+weeklyReport:
+  enabled: true
+  schedule: "0 8 * * 1"

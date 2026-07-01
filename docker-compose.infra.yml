@@ -108,6 +108,9 @@ services:
         /opt/kafka/bin/kafka-topics.sh --create --if-not-exists --bootstrap-server kafka:9092 --topic watch-events --partitions 6 --replication-factor 3 &&
         /opt/kafka/bin/kafka-topics.sh --create --if-not-exists --bootstrap-server kafka:9092 --topic video-events-dlq --partitions 1 --replication-factor 3 &&
         /opt/kafka/bin/kafka-topics.sh --create --if-not-exists --bootstrap-server kafka:9092 --topic video-events-embeddings-dlq --partitions 1 --replication-factor 3 &&
+        /opt/kafka/bin/kafka-topics.sh --create --if-not-exists --bootstrap-server kafka:9092 --topic subscription-events --partitions 3 --replication-factor 3 &&
+        /opt/kafka/bin/kafka-topics.sh --create --if-not-exists --bootstrap-server kafka:9092 --topic notification-events --partitions 3 --replication-factor 3 &&
+        /opt/kafka/bin/kafka-topics.sh --create --if-not-exists --bootstrap-server kafka:9092 --topic notification-events-dlq --partitions 1 --replication-factor 3 &&
         echo 'Topics created'
       "
     networks:

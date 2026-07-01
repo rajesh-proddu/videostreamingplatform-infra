@@ -1,0 +1,39 @@
+# AWS (EKS) overlay. Same topology as local — in-cluster Kafka/Redis/pgvector —
+# the only differences are the RDS-sourced MySQL credentials, the ghcr pull
+# secret, and an NLB Service for external WebSocket reach.
+
+imagePullSecrets:
+  - name: ghcr-pull
+
+# MySQL host/user/password come from the rds-credentials Secret (RDS master
+# password is rotated into it by bootstrap-aws.sh). JWT stays in auth-secrets.
+env:
+  - name: JWT_SIGNING_SECRET
+    valueFrom:
+      secretKeyRef:
+        name: auth-secrets
+        key: jwt-signing-secret
+  - name: MYSQL_HOST
+    valueFrom:
+      secretKeyRef:
+        name: rds-credentials
+        key: host
+  - name: MYSQL_USER
+    valueFrom:
+      secretKeyRef:
+        name: rds-credentials
+        key: username
+  - name: MYSQL_PASSWORD
+    valueFrom:
+      secretKeyRef:
+        name: rds-credentials
+        key: password
+
+# L4 NLB passthrough — WebSocket-friendly (no L7 idle-timeout/buffering), the
+# same pattern metadata/data/user-service use. No sticky session needed: Redis
+# decouples socket placement from event production.
+service:
+  type: LoadBalancer
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+    service.beta.kubernetes.io/aws-load-balancer-cross-zone-load-balancing-enabled: "true"
