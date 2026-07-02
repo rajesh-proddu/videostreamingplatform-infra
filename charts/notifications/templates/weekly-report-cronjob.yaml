@@ -25,7 +25,7 @@ spec:
             - name: weekly-report
               image: {{ .Values.image.repository }}:{{ .Values.image.tag }}
               imagePullPolicy: {{ .Values.image.pullPolicy }}
-              args: ["weekly-report"]
+              command: ["./notifications", "weekly-report"]
               envFrom:
                 {{- toYaml .Values.envFrom | nindent 16 }}
               env:
