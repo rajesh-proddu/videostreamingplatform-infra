@@ -19,6 +19,11 @@ spec:
       labels:
         app: kafka
     spec:
+      # The apache/kafka image runs as uid/gid 1000 (appuser); the EBS PVC
+      # mounts root-owned, so fsGroup makes the volume group-writable —
+      # required once KAFKA_LOG_DIRS points at the mount (below).
+      securityContext:
+        fsGroup: 1000
       nodeSelector:
         ebs-csi: "true"
       tolerations:
@@ -89,6 +94,14 @@ spec:
               value: "4194304"
             - name: CLUSTER_ID
               value: MkU3OEVBNTcwNTJENDM2Qk
+            # Persist KRaft metadata + log segments on the EBS PVC. Without this
+            # Kafka defaults to /tmp/kafka-logs (ephemeral) and loses metadata
+            # on every reschedule. Paired with fsGroup:1000 for write access.
+            # Use a subdirectory, not the mount root — the ext4 EBS volume has a
+            # lost+found dir at its root and Kafka rejects any log dir containing
+            # non-Kafka entries.
+            - name: KAFKA_LOG_DIRS
+              value: /var/lib/kafka/data/logs
           readinessProbe:
             tcpSocket:
               port: 9092

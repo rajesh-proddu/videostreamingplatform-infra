@@ -5,6 +5,10 @@ metadata:
   namespace: infra
 spec:
   clusterIP: None
+  # KRaft brokers must resolve each other's DNS during initial quorum
+  # formation, before any broker is Ready. Without this, the headless
+  # Service publishes no addresses until readiness, deadlocking startup.
+  publishNotReadyAddresses: true
   selector:
     app: kafka
   ports:
