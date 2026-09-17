@@ -180,6 +180,24 @@ jobs:
         run: |
           kubectl apply -f networking/network-policies.yaml || true
 
+      # Observability manifests live in the (public) platform repo; keep in
+      # lockstep with apply_observability in scripts/bootstrap-aws.sh.
+      - name: Check out observability manifests
+        uses: actions/checkout@v4
+        with:
+          repository: rajesh-proddu/videostreamingplatform
+          ref: main
+          path: platform
+          sparse-checkout: k8s/aws/manifests/observability
+
+      - name: Deploy observability (jaeger, prometheus, grafana)
+        run: |
+          dir=platform/k8s/aws/manifests/observability
+          kubectl apply -f "$dir/namespace.yaml"
+          kubectl apply -f "$dir/"
+          kubectl rollout status deployment/jaeger -n observability --timeout=5m
+          kubectl rollout status deployment/prometheus -n observability --timeout=5m
+
       - name: Deploy analytics chart (kafka-es-consumer disabled)
         run: |
           helm upgrade --install analytics charts/analytics \
@@ -214,3 +232,4 @@ jobs:
           kubectl get pods -n analytics
           kubectl get pods -n recommendations
           kubectl get pods -n videostreamingplatform
+          kubectl get pods -n observability

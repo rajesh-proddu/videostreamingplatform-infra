@@ -1,0 +1,22 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: observability
+  namespace: argocd
+spec:
+  project: platform
+  # Separate app because the videostreamingplatform app renders
+  # k8s/aws/manifests non-recursively and targets another namespace.
+  source:
+    repoURL: https://github.com/rajesh-proddu/videostreamingplatform.git
+    targetRevision: main
+    path: k8s/aws/manifests/observability
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: observability
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

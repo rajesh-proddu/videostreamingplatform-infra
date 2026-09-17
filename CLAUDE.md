@@ -79,13 +79,13 @@ The `CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk` is hardcoded identically in both docker
 
 ## ArgoCD GitOps
 
-`argocd/` defines one AppProject and five Applications — all with `automated: {prune: true, selfHeal: true}`.
+`argocd/` defines two AppProjects and seven Applications — all with `automated: {prune: true, selfHeal: true}`.
 
 ### AppProject
 
 | Project | Source Repos | Target Namespaces |
 |---------|-------------|-------------------|
-| `platform` | videostreamingplatform, videostreamingplatform-infra | `videostreamingplatform`, `infra` |
+| `platform` | videostreamingplatform, videostreamingplatform-infra | `videostreamingplatform`, `infra`, `analytics`, `recommendations`, `observability` (also allows ClusterRole/ClusterRoleBinding, for Prometheus) |
 
 ### Applications
 
@@ -96,6 +96,11 @@ The `CLUSTER_ID: MkU3OEVBNTcwNTJENDM2Qk` is hardcoded identically in both docker
 | `elasticsearch` | videostreamingplatform-infra | `elasticsearch` | raw manifests | videostreamingplatform |
 | `analytics` | videostreamingplatform-infra | `charts/analytics` | Helm (`values.yaml` + `values-aws.yaml`) | analytics |
 | `recommendations` | videostreamingplatform-infra | `charts/recommendations` | Helm (`values.yaml` + `values-aws.yaml`) | recommendations |
+| `observability` | videostreamingplatform | `k8s/aws/manifests/observability` | raw manifests | observability |
+
+### Observability
+
+Jaeger (OTLP on `jaeger.observability.svc.cluster.local:4318`), Prometheus and Grafana manifests live in the **platform** repo under `k8s/aws/manifests/observability/`, not here. All three deploy paths apply them: the `observability` ArgoCD app, `apply_observability` in `bootstrap-aws.sh`, and the "Deploy observability" step in `deploy-platform.yml`. That subdirectory needs its own step because the core-services apply (`apply_rendered_manifests`) and the `videostreamingplatform` app are both non-recursive. Prometheus discovers the analytics and recommendations pods through their `prometheus.io/*` annotations.
 
 ArgoCD watches `main` branch on all repos. Changes merged to `main` deploy automatically.
 

@@ -456,6 +456,21 @@ apply_rendered_manifests() {
   done < <(find "$src_dir" -maxdepth 1 -type f -name '*.yaml' -print0)
 }
 
+# Apply the observability stack (Jaeger, Prometheus, Grafana) from
+# videostreamingplatform/k8s/aws/manifests/observability. Every service
+# exports OTLP to jaeger.observability.svc.cluster.local:4318, and Prometheus
+# scrapes the pods' prometheus.io/* annotations. apply_rendered_manifests is
+# -maxdepth 1, so this subdirectory needs its own step. No ${VAR}
+# templating is needed. The Namespace goes first because `kubectl apply -f
+# <dir>` applies files alphabetically, which would put it after grafana.yaml.
+apply_observability() {
+  local dir="$PLATFORM_MANIFESTS_DIR/observability"
+  [[ -d "$dir" ]] || { warn "    $dir not found — skipping observability"; return 0; }
+  log "  applying observability stack (jaeger, prometheus, grafana)"
+  kubectl apply -f "$dir/namespace.yaml"
+  kubectl apply -f "$dir/"
+}
+
 # Install aws-ebs-csi-driver via the upstream Helm chart and pin its node
 # DaemonSet to the nodes that already host the EBS-backed StatefulSets
 # (Kafka, pgvector, Elasticsearch). The EKS-managed addon is intentionally
@@ -583,6 +598,10 @@ phase_deploy_direct() {
   else
     warn "  $PLATFORM_MANIFESTS_DIR not found — skipping core services"
   fi
+
+  # 3.4.a Observability, before the Helm charts, so trace and metric
+  # destinations exist when the service pods start.
+  apply_observability
 
   # 3.5 Helm charts (analytics + recommendations)
   # IRSA role ARNs come from the infra TF module outputs. values-aws.yaml

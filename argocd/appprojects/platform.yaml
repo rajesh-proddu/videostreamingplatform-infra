@@ -4,7 +4,7 @@ metadata:
   name: platform
   namespace: argocd
 spec:
-  description: Platform services (main app + infra + elasticsearch + analytics + recommendations)
+  description: Platform services (main app + infra + elasticsearch + analytics + recommendations + observability)
   sourceRepos:
     - https://github.com/rajesh-proddu/videostreamingplatform.git
     - https://github.com/rajesh-proddu/videostreamingplatform-infra.git
@@ -17,6 +17,13 @@ spec:
       server: https://kubernetes.default.svc
     - namespace: recommendations
       server: https://kubernetes.default.svc
+    - namespace: observability
+      server: https://kubernetes.default.svc
   clusterResourceWhitelist:
     - group: ''
       kind: Namespace
+    # Prometheus needs cluster-wide read access for pod/endpoint discovery.
+    - group: rbac.authorization.k8s.io
+      kind: ClusterRole
+    - group: rbac.authorization.k8s.io
+      kind: ClusterRoleBinding
